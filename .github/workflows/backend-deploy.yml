@@ -48,7 +48,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             # 1. Entrar na pasta do projeto
-            cd /root/openclaw 
+            cd /root/Empatia_Backend_Clean
             
             # 2. Descarregar a nova imagem
             docker pull ghcr.io/${{ github.repository_owner }}/empatia-backend:latest
