@@ -36,3 +36,6 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+
+# Secrets
+Empatia_Backend_Clean/vertex-key.json

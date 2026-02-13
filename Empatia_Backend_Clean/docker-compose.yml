@@ -1,18 +1,27 @@
 services:
   empatia-backend:
-    build: .
+    # 1. MUDANÇA CRÍTICA: Em vez de build, usamos a imagem do GitHub
+    image: ghcr.io/SEU_USER_GITHUB/empatia-backend:latest
     restart: always
+
+    # Garantir que o nome do container é estável
+    container_name: empatia-backend
+
     volumes:
+      # Confirma se este ficheiro JSON já está nesta pasta na VPS!
       - ./vertex-key.json:/app/vertex-key.json
+
     env_file:
       - .env
+
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/vertex-key.json
-      # Configuração de Base de Dados (VPS)
       - POSTGRES_USER=empatia_admin
       - POSTGRES_PASSWORD=bigmoneycoming
       - POSTGRES_DB=empatia_db
+      # O nome 'postgres-empatia' só funciona se estiverem na mesma rede
       - POSTGRES_HOST=postgres-empatia
+
     networks:
       - rede-empatia
 

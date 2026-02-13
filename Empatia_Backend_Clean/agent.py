@@ -85,6 +85,65 @@ realtime_api.RealtimeSession._handle_tool_calls = _patched_handle_tool_calls
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("empatia-agent")
 
+
+async def semantic_memory_search(connection, user_identity: str, query_text: str, limit: int = 5):
+    """
+    Busca semântica de memórias usando embeddings.
+
+    Args:
+        connection: conexão asyncpg
+        user_identity: UUID do utilizador
+        query_text: texto para gerar embedding e fazer busca
+        limit: número máximo de resultados
+
+    Returns:
+        Lista de dicionários com 'content', 'created_at', 'similarity'
+    """
+    try:
+        from google import genai
+
+        # Gerar embedding da query
+        client = genai.Client(
+            vertexai=True,
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location="europe-west1"
+        )
+
+        response = await asyncio.to_thread(
+            client.models.embed_content,
+            model="gemini-embedding-001",
+            contents=query_text
+        )
+        query_embedding = response.embeddings[0].values
+
+        # Busca por similaridade de coseno (1 - distância = similaridade)
+        # O operador <=> do pgvector calcula distância de coseno
+        rows = await connection.fetch("""
+            SELECT
+                content,
+                created_at,
+                1 - (embedding <=> $2::vector) AS similarity
+            FROM user_memories
+            WHERE user_id = $1::uuid
+            ORDER BY embedding <=> $2::vector
+            LIMIT $3
+        """, user_identity, str(query_embedding), limit)
+
+        return [dict(r) for r in rows]
+
+    except Exception as e:
+        logger.error(f"Semantic search error: {e}")
+        # Fallback: buscar memórias recentes
+        rows = await connection.fetch("""
+            SELECT content, created_at, 1.0 as similarity
+            FROM user_memories
+            WHERE user_id = $1::uuid
+            ORDER BY created_at DESC
+            LIMIT $2
+        """, user_identity, limit)
+        return [dict(r) for r in rows]
+
+
 async def entrypoint(ctx: JobContext):
     logger.info("A conectar à sala...")
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -188,7 +247,7 @@ async def entrypoint(ctx: JobContext):
                             
                             response = await asyncio.to_thread(
                                 client.models.embed_content,
-                                model="text-embedding-004",
+                                model="gemini-embedding-001",
                                 contents=txt
                             )
                             emb = response.embeddings[0].values
@@ -209,6 +268,42 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.error(f"Error managing memory: {e}")
             return "Error."
+
+    async def recall_memories(topic: str) -> str:
+        """
+        Busca memórias relevantes sobre um tópico específico usando busca semântica.
+
+        Args:
+            topic: O tópico ou assunto sobre o qual procurar memórias (ex: "família", "saúde", "hobbies")
+
+        Returns:
+            String com memórias relevantes formatadas, ou mensagem se não houver
+        """
+        try:
+            async with db_pool.acquire() as connection:
+                # Usar busca semântica
+                results = await semantic_memory_search(
+                    connection,
+                    user_identity,
+                    topic,
+                    limit=3
+                )
+
+                if not results:
+                    return f"Não encontrei memórias sobre '{topic}'."
+
+                # Formatar resultados
+                output = f"Memórias sobre '{topic}':\n"
+                for mem in results:
+                    date_str = mem['created_at'].strftime("%Y-%m-%d")
+                    similarity = mem.get('similarity', 0)
+                    output += f"- [{date_str}] {mem['content']} (relevância: {similarity:.2f})\n"
+
+                return output
+
+        except Exception as e:
+            logger.error(f"Error recalling memories: {e}")
+            return f"Erro ao procurar memórias sobre '{topic}'."
 
     logger.info("A iniciar EmpatIA na EUROPA (europe-west1)...")
     
@@ -387,7 +482,13 @@ async def entrypoint(ctx: JobContext):
 
         # Buscar perfil do utilizador
         async with db_pool.acquire() as connection:
-            # 1. Criar tabela se não existir
+            # 0. Garantir extensão pgvector para embeddings
+            try:
+                await connection.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            except Exception as e:
+                logger.warning(f"pgvector extension not available: {e}")
+
+            # 1. Criar tabela users se não existir
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -403,6 +504,65 @@ async def entrypoint(ctx: JobContext):
                 await connection.execute("ALTER TABLE users ADD COLUMN profile JSONB;")
             except asyncpg.DuplicateColumnError:
                 pass # Coluna já existe
+
+            # 3. Criar tabela user_memories para busca semântica
+            # NOTA: gemini-embedding-001 gera vetores de 768 dimensões
+            # Se mudar o modelo, ajustar o vector(768) na definição
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS user_memories (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    content TEXT NOT NULL,
+                    embedding vector(768),
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+            """)
+
+            # 4. Criar índices para performance em user_memories
+            try:
+                await connection.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_user_memories_user_id
+                    ON user_memories(user_id);
+                """)
+                await connection.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_user_memories_created_at
+                    ON user_memories(created_at DESC);
+                """)
+                # Índice para busca vetorial (pgvector)
+                await connection.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_user_memories_embedding
+                    ON user_memories USING ivfflat (embedding vector_cosine_ops)
+                    WITH (lists = 100);
+                """)
+            except Exception as e:
+                logger.warning(f"Index creation skipped (may already exist): {e}")
+
+            # 5. Criar tabela session_summaries para relatórios
+            await connection.execute("""
+                CREATE TABLE IF NOT EXISTS session_summaries (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id UUID NOT NULL,
+                    session_summary TEXT,
+                    emotional_state TEXT,
+                    new_facts JSONB,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+            """)
+
+            # 6. Criar índices para performance em session_summaries
+            try:
+                await connection.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_summaries_user_id
+                    ON session_summaries(user_id);
+                """)
+                await connection.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_session_summaries_created_at
+                    ON session_summaries(created_at DESC);
+                """)
+            except Exception as e:
+                logger.warning(f"Index creation skipped (may already exist): {e}")
             
             # Busca os dados (apenas se identity for válido)
             if user_identity:
@@ -436,13 +596,15 @@ async def entrypoint(ctx: JobContext):
                     except:
                         profile_str = str(raw_profile)
 
-                # BUSCA MEMÓRIAS EPISÓDICAS RECENTES
+                # BUSCA MEMÓRIAS EPISÓDICAS (SEMANTIC SEARCH)
                 episodic_str = ""
                 try:
+                    # Estratégia: buscar as 5 memórias mais recentes para contexto inicial
+                    # (Busca semântica seria ideal, mas requer contexto de conversa em tempo real)
                     rows_mem = await connection.fetch("""
-                        SELECT content, created_at FROM user_memories 
-                        WHERE user_id = $1::uuid 
-                        ORDER BY created_at DESC LIMIT 3
+                        SELECT content, created_at FROM user_memories
+                        WHERE user_id = $1::uuid
+                        ORDER BY created_at DESC LIMIT 5
                     """, user_identity)
                     if rows_mem:
                         episodic_str = "\n**RECENT MEMORIES:**\n"
@@ -481,8 +643,8 @@ async def entrypoint(ctx: JobContext):
         instructions=agent_instructions
     )
     
-    # 3. Sessão
-    tools = [manage_memory] if user_identity and db_pool else []
+    # 3. Sessão (Tools disponíveis para o agente)
+    tools = [manage_memory, recall_memories] if user_identity and db_pool else []
 
     session = AgentSession(
         llm=model,
@@ -582,7 +744,7 @@ async def entrypoint(ctx: JobContext):
                 # Gerar embedding para o resumo
                 try:
                     res_emb = client.models.embed_content(
-                        model="text-embedding-004",
+                        model="gemini-embedding-001",
                         contents=summary_text,
                     )
                     embedding_str = str(res_emb.embeddings[0].values)
