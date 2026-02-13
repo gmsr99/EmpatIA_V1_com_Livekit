@@ -1,0 +1,181 @@
+@import 'tailwindcss';
+
+@plugin 'tailwindcss-animate';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-commit-mono);
+  --font-heading: var(--font-montserrat);
+
+  --color-border: hsl(var(--border) / <alpha-value>);
+  --color-input: hsl(var(--input) / <alpha-value>);
+  --color-ring: hsl(var(--ring) / <alpha-value>);
+  --color-background: hsl(var(--background) / <alpha-value>);
+  --color-foreground: hsl(var(--foreground) / <alpha-value>);
+
+  --color-primary: hsl(var(--primary) / <alpha-value>);
+  --color-primary-foreground: hsl(var(--primary-foreground) / <alpha-value>);
+
+  --color-secondary: hsl(var(--secondary) / <alpha-value>);
+  --color-secondary-foreground: hsl(var(--secondary-foreground) / <alpha-value>);
+
+  --color-destructive: hsl(var(--destructive) / <alpha-value>);
+  --color-destructive-foreground: hsl(var(--destructive-foreground) / <alpha-value>);
+
+  --color-muted: hsl(var(--muted) / <alpha-value>);
+  --color-muted-foreground: hsl(var(--muted-foreground) / <alpha-value>);
+
+  --color-accent: hsl(var(--accent) / <alpha-value>);
+  --color-accent-foreground: hsl(var(--accent-foreground) / <alpha-value>);
+
+  --color-popover: hsl(var(--popover) / <alpha-value>);
+  --color-popover-foreground: hsl(var(--popover-foreground) / <alpha-value>);
+
+  --color-card: hsl(var(--card) / <alpha-value>);
+  --color-card-foreground: hsl(var(--card-foreground) / <alpha-value>);
+
+  /* Custom EmpatIA Colors - Neon Purple Edition */
+  --color-brand-lilac: #d8b4fe;
+  --color-brand-blue-soft: #a9c8e8;
+  --color-brand-blue-deep: #4a5e90;
+  --color-brand-signature: #9333ea;
+  /* Purple 600 */
+  --color-brand-white: #ffffff;
+  --color-brand-surface: #0f0720;
+  /* Deep Purple Black */
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+
+    to {
+      height: 0;
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-800, currentColor);
+  }
+}
+
+@utility step {
+  counter-increment: step;
+}
+
+@utility step-before {
+  content: counter(step);
+}
+
+@layer utilities {
+  body {
+    font-family: var(--font-inter);
+    font-weight: 200;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-montserrat);
+    font-weight: 200;
+  }
+}
+
+:root {
+  /* Default to Dark Mode values for consistency */
+  --background: 260 50% 5%;
+  /* Deep Purple/Black */
+  --foreground: 210 40% 98%;
+
+  --card: 260 40% 8%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 260 40% 8%;
+  --popover-foreground: 210 40% 98%;
+
+  --primary: 270 100% 60%;
+  /* Neon Purple */
+  --primary-foreground: 210 40% 98%;
+
+  --secondary: 290 100% 70%;
+  /* Pinkish Purple */
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 260 30% 15%;
+  --muted-foreground: 215 20.2% 65.1%;
+
+  --accent: 260 30% 15%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 260 30% 20%;
+  --input: 260 30% 20%;
+  --ring: 270 100% 60%;
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 260 50% 5%;
+  --foreground: 210 40% 98%;
+
+  --card: 260 40% 8%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 260 40% 8%;
+  --popover-foreground: 210 40% 98%;
+
+  --primary: 270 100% 60%;
+  --primary-foreground: 210 40% 98%;
+
+  --secondary: 290 100% 70%;
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 260 30% 15%;
+  --muted-foreground: 215 20.2% 65.1%;
+
+  --accent: 260 30% 15%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 260 30% 20%;
+  --input: 260 30% 20%;
+  --ring: 270 100% 60%;
+}

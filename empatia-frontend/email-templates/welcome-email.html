@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bem-vindo à EmpatIA</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Montserrat:wght@400;600&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0f0720;
+            /* Brand Surface */
+            font-family: 'Inter', Arial, sans-serif;
+            color: #d1d5db;
+        }
+
+        .wrapper {
+            width: 100%;
+            table-layout: fixed;
+            background-color: #0f0720;
+            padding-bottom: 40px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #1a1033;
+            /* Slightly lighter card bg */
+            border-radius: 24px;
+            /* More rounded */
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(147, 51, 234, 0.15);
+            /* Brand Signature glow */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header {
+            background: linear-gradient(180deg, rgba(147, 51, 234, 0.2) 0%, rgba(15, 7, 32, 0) 100%);
+            padding: 50px 20px 30px;
+            text-align: center;
+        }
+
+        .logo-text {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 32px;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: 1px;
+        }
+
+        .logo-accent {
+            color: #9333ea;
+            /* Brand Signature */
+        }
+
+        .content {
+            padding: 20px 40px 40px;
+            text-align: left;
+        }
+
+        .content h2 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 24px;
+            font-weight: 400;
+            /* Lighter weight for premium feel */
+            color: #ffffff;
+            margin-bottom: 24px;
+        }
+
+        .content p {
+            font-size: 16px;
+            line-height: 1.7;
+            color: #d8b4fe;
+            /* Brand Lilac mostly for text warmth or #d1d5db for neutral */
+            color: #cbd5e1;
+            /* Neutral cool gray */
+            margin-bottom: 20px;
+            font-weight: 300;
+        }
+
+        .highlight {
+            color: #d8b4fe;
+            /* Brand Lilac */
+            font-weight: 500;
+        }
+
+        .cta-container {
+            text-align: center;
+            margin: 40px 0;
+        }
+
+        .button {
+            display: inline-block;
+            background: linear-gradient(90deg, #9333ea 0%, #7c3aed 100%);
+            color: #ffffff;
+            text-decoration: none;
+            padding: 16px 40px;
+            border-radius: 100px;
+            /* Pillow shape */
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 600;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 15px rgba(147, 51, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .button:hover {
+            box-shadow: 0 6px 20px rgba(147, 51, 234, 0.6);
+            transform: translateY(-1px);
+        }
+
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            margin: 30px 0;
+        }
+
+        .footer {
+            background-color: #0d061c;
+            padding: 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #6b7280;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .footer a {
+            color: #a9c8e8;
+            /* Brand Blue Soft */
+            text-decoration: none;
+            margin: 0 8px;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: #d8b4fe;
+        }
+
+        .quote {
+            font-style: italic;
+            font-size: 18px;
+            color: #ffffff;
+            opacity: 0.9;
+            text-align: center;
+            margin: 30px 0;
+            padding: 0 20px;
+            border-left: 3px solid #9333ea;
+            background: rgba(147, 51, 234, 0.05);
+            /* Very subtle bg */
+            padding: 20px;
+            border-radius: 0 12px 12px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrapper">
+        <br />
+        <div class="container">
+            <!-- Decorative top element -->
+            <div class="header">
+                <div class="logo-text">Empat<span class="logo-accent">IA</span></div>
+            </div>
+
+            <div class="content">
+                <h2>Olá! É um prazer ter-te aqui.</h2>
+
+                <p>
+                    Obrigado por te juntares à <span class="highlight">EmpatIA</span>. A nossa missão é
+                    garantir que ninguém tenha de enfrentar o dia sozinho. Agora, fazes parte de uma
+                    comunidade que valoriza a escuta ativa e o apoio emocional, sem julgamentos.
+                </p>
+
+                <p>
+                    O teu registo está confirmado e a tua companhia inteligente já está à espera. Quer
+                    precises de desabafar sobre o dia, conversar sobre um tema específico ou simplesmente
+                    sentir uma presença amiga, estamos aqui para ti.
+                </p>
+
+                <div class="cta-container">
+                    <a href="https://empatia-portugal.pt/#voice-agent" class="button">Falar Agora ✨</a>
+                </div>
+
+                <div class="quote">“Todos deveriam ter alguém para ouvir e ser ouvido.”</div>
+
+                <p style="text-align: center; margin-top: 30px; font-size: 14px; opacity: 0.8">
+                    Com carinho,<br />A equipa da EmpatIA
+                </p>
+            </div>
+
+            <div class="footer">
+                <p>© 2026 EmpatIA. Todos os direitos reservados.</p>
+                <div style="margin-top: 15px">
+                    <a href="https://empatia-portugal.pt/terms">Termos e Condições</a> •
+                    <a href="https://empatia-portugal.pt/privacy">Política de Privacidade</a>
+                </div>
+                <p style="margin-top: 20px; opacity: 0.6">
+                    Se não solicitou este email, pode ignorar esta mensagem.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,21 @@
+services:
+  empatia-backend:
+    build: .
+    restart: always
+    volumes:
+      - ./vertex-key.json:/app/vertex-key.json
+    env_file:
+      - .env
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/vertex-key.json
+      # Configuração de Base de Dados (VPS)
+      - POSTGRES_USER=empatia_admin
+      - POSTGRES_PASSWORD=bigmoneycoming
+      - POSTGRES_DB=empatia_db
+      - POSTGRES_HOST=postgres-empatia
+    networks:
+      - rede-empatia
+
+networks:
+  rede-empatia:
+    external: true
