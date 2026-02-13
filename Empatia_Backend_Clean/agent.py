@@ -109,10 +109,13 @@ async def semantic_memory_search(connection, user_identity: str, query_text: str
             location="europe-west1"
         )
 
-        response = await asyncio.to_thread(
-            client.models.embed_content,
-            model="text-multilingual-embedding-002",
-            contents=query_text
+        response = await asyncio.wait_for(
+            asyncio.to_thread(
+                client.models.embed_content,
+                model="text-multilingual-embedding-002",
+                contents=query_text
+            ),
+            timeout=4.0  # 4s timeout para embedding (deixa 1s para a query BD)
         )
         query_embedding = response.embeddings[0].values
 
@@ -175,12 +178,16 @@ async def entrypoint(ctx: JobContext):
         """
         try:
             async with db_pool.acquire() as connection:
-                # Usar busca semântica
-                results = await semantic_memory_search(
-                    connection,
-                    user_identity,
-                    topic,
-                    limit=3
+                # Usar busca semântica COM TIMEOUT de 5s
+                # Se demorar mais, retorna vazio em vez de bloquear o agente
+                results = await asyncio.wait_for(
+                    semantic_memory_search(
+                        connection,
+                        user_identity,
+                        topic,
+                        limit=3
+                    ),
+                    timeout=5.0
                 )
 
                 if not results:
@@ -195,6 +202,9 @@ async def entrypoint(ctx: JobContext):
 
                 return output
 
+        except asyncio.TimeoutError:
+            logger.warning(f"recall_memories timeout (5s) for topic: {topic}")
+            return f"Não consegui procurar memórias neste momento."
         except Exception as e:
             logger.error(f"Error recalling memories: {e}")
             return f"Erro ao procurar memórias sobre '{topic}'."
@@ -237,16 +247,16 @@ async def entrypoint(ctx: JobContext):
             automatic_activity_detection=AutomaticActivityDetection(
                 # Sensibilidade baixa para ignorar ruídos de fundo
                 start_of_speech_sensitivity=StartSensitivity.START_SENSITIVITY_LOW,
-                # Sensibilidade de fim normal
-                end_of_speech_sensitivity=EndSensitivity.END_SENSITIVITY_UNSPECIFIED,
-                
+                # Sensibilidade de fim BAIXA: espera mais antes de considerar que o utilizador acabou de falar.
+                # Crítico para idosos que fazem pausas naturais a meio de frases.
+                end_of_speech_sensitivity=EndSensitivity.END_SENSITIVITY_LOW,
+
                 # DEBOUNCE: Requer 300ms de voz contínua para confirmar início de fala.
-                # (Reduzido de 500ms para resposta mais rápida)
                 prefix_padding_ms=300,
 
-                # Espera 500ms de silêncio antes de responder.
-                # (Reduzido de 1000ms para menor latência, mas ainda tolerante a pequenas pausas)
-                silence_duration_ms=500 
+                # Espera 1000ms de silêncio antes de responder.
+                # Idosos fazem pausas naturais; 500ms causava interrupções falsas.
+                silence_duration_ms=1000
             )
         ),
         
