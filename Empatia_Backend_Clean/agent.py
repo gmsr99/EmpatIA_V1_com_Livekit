@@ -85,6 +85,21 @@ realtime_api.RealtimeSession._handle_tool_calls = _patched_handle_tool_calls
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("empatia-agent")
 
+# --- CACHE DO CLIENTE GENAI (evita criar novo a cada chamada) ---
+_genai_client = None
+
+def _get_genai_client():
+    global _genai_client
+    if _genai_client is None:
+        from google import genai
+        _genai_client = genai.Client(
+            vertexai=True,
+            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+            location="europe-west1"
+        )
+        logger.info("genai.Client criado e cached.")
+    return _genai_client
+
 
 async def semantic_memory_search(connection, user_identity: str, query_text: str, limit: int = 5):
     """
@@ -100,14 +115,7 @@ async def semantic_memory_search(connection, user_identity: str, query_text: str
         Lista de dicionários com 'content', 'created_at', 'similarity'
     """
     try:
-        from google import genai
-
-        # Gerar embedding da query
-        client = genai.Client(
-            vertexai=True,
-            project=os.getenv("GOOGLE_CLOUD_PROJECT"),
-            location="europe-west1"
-        )
+        client = _get_genai_client()
 
         response = await asyncio.wait_for(
             asyncio.to_thread(
@@ -165,17 +173,12 @@ async def entrypoint(ctx: JobContext):
     # NOTA: Apenas ferramentas de LEITURA durante a conversa.
     # Toda a escrita de memórias acontece no pós-conversa (summarize_session_task).
 
-    @llm.function_tool(description="Search past conversation memories about a specific topic using semantic search. Use this silently when you need to recall details from previous conversations.")
+    @llm.function_tool(description="Search past memories about a topic. Use ONLY when the user mentions something from a previous conversation and you need context. Do NOT use for current session topics. Maximum 1 call per conversation turn. Use silently.")
     async def recall_memories(topic: Annotated[str, "The topic to search memories for (e.g., 'família', 'saúde', 'neto João')"]) -> str:
         """
         Busca memórias relevantes sobre um tópico específico usando busca semântica.
-
-        Args:
-            topic: O tópico ou assunto sobre o qual procurar memórias (ex: "família", "saúde", "hobbies")
-
-        Returns:
-            String com memórias relevantes formatadas, ou mensagem se não houver
         """
+        logger.info(f"TOOL CALL: recall_memories(topic='{topic}')")
         try:
             async with db_pool.acquire() as connection:
                 # Usar busca semântica COM TIMEOUT de 5s
@@ -191,6 +194,7 @@ async def entrypoint(ctx: JobContext):
                 )
 
                 if not results:
+                    logger.info(f"recall_memories: sem resultados para '{topic}'")
                     return f"Não encontrei memórias sobre '{topic}'."
 
                 # Formatar resultados
@@ -200,10 +204,11 @@ async def entrypoint(ctx: JobContext):
                     similarity = mem.get('similarity', 0)
                     output += f"- [{date_str}] {mem['content']} (relevância: {similarity:.2f})\n"
 
+                logger.info(f"recall_memories: {len(results)} resultados para '{topic}'")
                 return output
 
         except asyncio.TimeoutError:
-            logger.warning(f"recall_memories timeout (5s) for topic: {topic}")
+            logger.warning(f"recall_memories TIMEOUT (5s) for topic: {topic}")
             return f"Não consegui procurar memórias neste momento."
         except Exception as e:
             logger.error(f"Error recalling memories: {e}")
@@ -306,11 +311,13 @@ async def entrypoint(ctx: JobContext):
 
             # BEHAVIOR ENGINE
 
-            0. **TOOL USE & SILENCE (CRITICAL):**
-               - You have access to `recall_memories` to search for details from past conversations.
-               - **SILENT ACTION:** When using it, do NOT say "Vou verificar..." or "Deixe-me ver".
-               - **Protocol:** Call the tool -> Wait for result -> THEN Speak naturally.
-               - You do NOT have the ability to save or modify memories during the conversation. The system handles that automatically after each session.
+            0. **TOOL USE (CRITICAL - READ CAREFULLY):**
+               - You have `recall_memories` to search details from PREVIOUS conversations (not the current one).
+               - **WHEN TO USE:** ONLY when the user explicitly references something from a past session that you don't have in the loaded profile/memories context.
+               - **WHEN NOT TO USE:** Do NOT call it for topics the user is currently discussing. You already have the user's profile loaded. Do NOT call it at the start of the conversation. Do NOT call it more than once per conversation turn.
+               - **SILENT ACTION:** Never say "Vou verificar..." or "Deixe-me ver". Just call it silently.
+               - **PREFER CONVERSATION FLOW:** If unsure whether to call the tool, prefer to continue the conversation naturally. The tool is slow and interrupts the flow.
+               - You do NOT have the ability to save or modify memories. The system handles that automatically after each session.
 
             1. **PROACTIVITY (High Priority):**
                - Do NOT wait passively. Drive the conversation.
@@ -603,11 +610,10 @@ async def entrypoint(ctx: JobContext):
             
         logger.info(f"A iniciar sumarização para {user_name} ({len(valid_transcript)} mensagens)...")
         try:
-            from google import genai
             from google.genai import types
             import json
-            
-            client = genai.Client(vertexai=True, project=os.getenv("GOOGLE_CLOUD_PROJECT"), location="europe-west1")
+
+            client = _get_genai_client()
             
             full_text = "\n".join(valid_transcript)
 
