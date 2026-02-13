@@ -111,7 +111,7 @@ async def semantic_memory_search(connection, user_identity: str, query_text: str
 
         response = await asyncio.to_thread(
             client.models.embed_content,
-            model="gemini-embedding-001",
+            model="text-multilingual-embedding-002",
             contents=query_text
         )
         query_embedding = response.embeddings[0].values
@@ -159,117 +159,11 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Credenciais encontradas em: {creds_path}")
 
     # --- DEFINIÇÃO DE FERRAMENTAS (TOOLS) ---
-    @llm.function_tool(description="Manage the user's profile memory. Use this to ADD new facts, DELETE obsolete/incorrect info, or UPDATE existing details (e.g., when a preference changes or a situation evolves).")
-    async def manage_memory(action: Annotated[str, "The action to perform: 'add', 'update', or 'delete'"], 
-                          category: Annotated[str, "The category: 'personal', 'health', 'family', 'preferences', 'topics', 'other'"], 
-                          detail: Annotated[str, "The content to add (for 'add'/'update'). Can be empty for 'delete'."] = "", 
-                          old_detail: Annotated[str, "The EXACT string to remove/replace (REQUIRED for 'update'/'delete')"] = ""):
-        """Manage memory: add, update, or delete facts. USE SILENTLY.
-        
-        Examples:
-        - Add: action='add', category='family', detail='Tem um cão Rodolfo'
-        - Update: action='update', category='family', detail='O cão Rodolfo faleceu', old_detail='Tem um cão Rodolfo'
-        - Delete: action='delete', category='family', detail='', old_detail='Tem um neto Bernardo'
-        """
-        logger.info(f"Memory Management: [{action.upper()}] category={category} detail='{detail}' old_detail='{old_detail}'")
-        
-        if not db_pool or not user_identity:
-            return "Failed: No DB or User ID."
-        
-        try:
-            import json
-            async with db_pool.acquire() as connection:
-                row = await connection.fetchrow("SELECT profile FROM users WHERE id::text = $1", user_identity)
-                current_profile = {}
-                if row and row['profile']:
-                    try:
-                        current_profile = json.loads(row['profile']) if isinstance(row['profile'], str) else row['profile']
-                    except:
-                        current_profile = {}
-                
-                # Ensure category exists
-                if category not in current_profile:
-                    current_profile[category] = []
-                
-                # Normalize to list
-                if not isinstance(current_profile[category], list):
-                     current_profile[category] = [str(current_profile[category])]
-                
-                entry_list = current_profile[category]
-                modified = False
-                
-                if action == "add":
-                    if detail and detail not in entry_list:
-                        entry_list.append(detail)
-                        modified = True
-                        logger.info(f"Added: {detail}")
-                
-                elif action == "delete":
-                    target = old_detail if old_detail else detail
-                    if target and target in entry_list:
-                        entry_list.remove(target)
-                        modified = True
-                        logger.info(f"Deleted: {target}")
-                    else:
-                        logger.warning(f"Delete failed: '{target}' not found in {category}")
+    # NOTA: Apenas ferramentas de LEITURA durante a conversa.
+    # Toda a escrita de memórias acontece no pós-conversa (summarize_session_task).
 
-                elif action == "update":
-                    if old_detail and old_detail in entry_list:
-                        idx = entry_list.index(old_detail)
-                        entry_list[idx] = detail
-                        modified = True
-                        logger.info(f"Updated: '{old_detail}' -> '{detail}'")
-                    else:
-                        logger.warning(f"Update failed: '{old_detail}' not found. Adding as new.")
-                        if detail not in entry_list:
-                            entry_list.append(detail)
-                            modified = True
-                
-                if modified:
-                    new_json = json.dumps(current_profile)
-                    await connection.execute("UPDATE users SET profile = $2::jsonb WHERE id::text = $1", user_identity, new_json)
-
-                    # --- EPISODIC LOGGING (Background) ---
-                    # We log the *action* as an episodic memory so we know what changed
-                    if action == "add":
-                        log_text = f"[{category}] Learned: {detail}"
-                    elif action == "update":
-                        log_text = f"[{category}] Updated: {old_detail} -> {detail}"
-                    elif action == "delete":
-                        log_text = f"[{category}] Forgot: {old_detail or detail}"
-                    else:
-                        log_text = f"[{category}] Memory modified"
-
-                    async def save_episodic_background(uid, txt):
-                        try:
-                            from google import genai
-                            client = genai.Client(vertexai=True, project=os.getenv("GOOGLE_CLOUD_PROJECT"), location="europe-west1")
-                            
-                            response = await asyncio.to_thread(
-                                client.models.embed_content,
-                                model="gemini-embedding-001",
-                                contents=txt
-                            )
-                            emb = response.embeddings[0].values
-                            
-                            async with db_pool.acquire() as conn:
-                                await conn.execute("""
-                                    INSERT INTO user_memories (user_id, content, embedding, created_at)
-                                    VALUES ($1::uuid, $2, $3::vector, NOW())
-                                """, uid, txt, str(emb))
-                        except Exception as e_bg:
-                            logger.error(f"Background memory save failed: {e_bg}")
-
-                    asyncio.create_task(save_episodic_background(user_identity, log_text))
-                    return f"Memory {action} successful."
-                else:
-                    return f"No changes made (Action: {action})."
-
-        except Exception as e:
-            logger.error(f"Error managing memory: {e}")
-            return "Error."
-
-    async def recall_memories(topic: str) -> str:
+    @llm.function_tool(description="Search past conversation memories about a specific topic using semantic search. Use this silently when you need to recall details from previous conversations.")
+    async def recall_memories(topic: Annotated[str, "The topic to search memories for (e.g., 'família', 'saúde', 'neto João')"]) -> str:
         """
         Busca memórias relevantes sobre um tópico específico usando busca semântica.
 
@@ -403,9 +297,10 @@ async def entrypoint(ctx: JobContext):
             # BEHAVIOR ENGINE
 
             0. **TOOL USE & SILENCE (CRITICAL):**
-               - **SILENT ACTION:** When you need to use a tool (like `manage_memory` or `check_profile`), do NOT say "Vou verificar..." or "Deixe-me ver". 
-               - **Protocol:** Call the tool -> Wait for result -> THEN Speak.
-               - This prevents you from interrupting yourself when the tool completes.
+               - You have access to `recall_memories` to search for details from past conversations.
+               - **SILENT ACTION:** When using it, do NOT say "Vou verificar..." or "Deixe-me ver".
+               - **Protocol:** Call the tool -> Wait for result -> THEN Speak naturally.
+               - You do NOT have the ability to save or modify memories during the conversation. The system handles that automatically after each session.
 
             1. **PROACTIVITY (High Priority):**
                - Do NOT wait passively. Drive the conversation.
@@ -419,13 +314,10 @@ async def entrypoint(ctx: JobContext):
                  - Good: "Como me disse na semana passada que lhe doía o joelho, hoje sente-se melhorzinho?"
                - **Validate Emotions:** Vary your validation phrases. Don't just say "Sinto muito".
                  - Use: "Que chatice!", "Isso deve custar", "Imagino a sua alegria!", "Fico mesmo contente por si".
-               - **MEMORY MAINTENANCE & INTEGRITY (CRITICAL):** 
-                 - **DETECT CONTRADICTIONS:** If the user mentions something that conflicts with your stored profile, you **MUST** correct it immediately.
-                 - **ENTITY RESOLUTION:** If a name (e.g., "Zé") is stored as a 'Son' but the user refers to it as a 'Dog', you MUST use `manage_memory` to:
-                   1. **DELETE** the incorrect fact ("Tem um filho chamado Zé").
-                   2. **ADD** the correct fact ("Tem um cão chamado Zé").
-                 - **NEVER** keep two contradictory facts about the same entity.
-                 - **Example:** Old memory: "Tem um cão Rodolfo". User says: "O Rodolfo já morreu há anos". Action: DELETE "Tem um cão Rodolfo", ADD "O cão Rodolfo faleceu".
+               - **MEMORY MAINTENANCE:** If the user corrects something or contradicts stored information, acknowledge it naturally in conversation.
+                 The system will automatically reconcile contradictions when it analyzes the full transcript after the session ends.
+                 - **Example:** Old memory: "Tem um cão Rodolfo". User says: "O Rodolfo já morreu há anos". You: "Oh, lamento muito. O Rodolfo era mesmo especial para si."
+                 (The system will automatically update the profile after the conversation.)
 
             3. **CULTURAL ANCHORING:**
                - Use references relevant to Portuguese culture (traditional food like 'Bacalhau', the weather, classic TV).
@@ -446,7 +338,7 @@ async def entrypoint(ctx: JobContext):
     import asyncpg
     
     db_pool = None
-    db_pool = None
+    user_identity = None
     user_profile = None
     user_name = None
 
@@ -499,14 +391,15 @@ async def entrypoint(ctx: JobContext):
                 );
             """)
 
-            # 2. Adicionar coluna 'profile' se não existir (Schema migration)
+            # 2. Schema migrations (adicionar colunas se não existirem)
             try:
                 await connection.execute("ALTER TABLE users ADD COLUMN profile JSONB;")
             except asyncpg.DuplicateColumnError:
-                pass # Coluna já existe
+                pass
 
             # 3. Criar tabela user_memories para busca semântica
-            # NOTA: gemini-embedding-001 gera vetores de 768 dimensões
+            # NOTA: text-multilingual-embedding-002 gera vetores de 768 dimensões
+            # Otimizado para português e outras línguas
             # Se mudar o modelo, ajustar o vector(768) na definição
             await connection.execute("""
                 CREATE TABLE IF NOT EXISTS user_memories (
@@ -514,10 +407,17 @@ async def entrypoint(ctx: JobContext):
                     user_id UUID NOT NULL,
                     content TEXT NOT NULL,
                     embedding vector(768),
+                    memory_type TEXT DEFAULT 'fact',
                     created_at TIMESTAMP DEFAULT NOW(),
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
             """)
+
+            # Migração: adicionar coluna memory_type se tabela já existia
+            try:
+                await connection.execute("ALTER TABLE user_memories ADD COLUMN memory_type TEXT DEFAULT 'fact';")
+            except asyncpg.DuplicateColumnError:
+                pass
 
             # 4. Criar índices para performance em user_memories
             try:
@@ -643,8 +543,8 @@ async def entrypoint(ctx: JobContext):
         instructions=agent_instructions
     )
     
-    # 3. Sessão (Tools disponíveis para o agente)
-    tools = [manage_memory, recall_memories] if user_identity and db_pool else []
+    # 3. Sessão (Apenas tools de LEITURA durante a conversa)
+    tools = [recall_memories] if user_identity and db_pool else []
 
     session = AgentSession(
         llm=model,
@@ -700,32 +600,64 @@ async def entrypoint(ctx: JobContext):
             client = genai.Client(vertexai=True, project=os.getenv("GOOGLE_CLOUD_PROJECT"), location="europe-west1")
             
             full_text = "\n".join(valid_transcript)
+
+            # Carregar perfil atual para deteção de contradições
+            current_profile_json = ""
+            try:
+                async with db_pool.acquire() as conn_profile:
+                    row_p = await conn_profile.fetchrow("SELECT profile FROM users WHERE id::text = $1", user_identity)
+                    if row_p and row_p['profile']:
+                        p = row_p['profile']
+                        current_profile_data = json.loads(p) if isinstance(p, str) else p
+                        current_profile_json = json.dumps(current_profile_data, ensure_ascii=False, indent=2)
+            except Exception as e_prof:
+                logger.warning(f"Não foi possível carregar perfil para deteção de contradições: {e_prof}")
+
             prompt = f"""
             Analise a seguinte conversa entre a assistente "EmpatIA" e o utilizador {user_name}.
-            Extraia informações relevantes para atualizar o perfil do utilizador.
-            
+            Extraia informações detalhadas para atualizar o perfil e as memórias do utilizador.
+
+            PERFIL ATUAL DO UTILIZADOR (para deteção de contradições):
+            {current_profile_json if current_profile_json else "Perfil vazio - utilizador novo."}
+
             Retorne APENAS um objeto JSON com o seguinte formato:
             {{
                 "new_facts": {{
                     "personal": ["facto 1", "facto 2"],
-                    "health": [...],
-                    "family": [...],
-                    "preferences": [...],
-                    "topics": [...]
+                    "health": [],
+                    "family": [],
+                    "preferences": [],
+                    "topics": []
                 }},
+                "corrections": [
+                    {{
+                        "category": "family",
+                        "old_fact": "facto antigo no perfil que está errado",
+                        "new_fact": "facto correto mencionado na conversa",
+                        "action": "update"
+                    }}
+                ],
+                "individual_memories": [
+                    "O utilizador mencionou que o neto João vai emigrar para a França",
+                    "Sente dores nos joelhos quando o tempo está húmido",
+                    "Estava com saudades antecipadas do neto"
+                ],
                 "emotional_state": "breve descrição do estado de espírito do utilizador nesta sessão",
-                "session_summary": "resumo de 2 frases do que foi discutido"
+                "session_summary": "resumo de 2-3 frases do que foi discutido"
             }}
-            
-            Importante: 
+
+            REGRAS IMPORTANTES:
+            - "new_facts": factos estruturados por categoria para o perfil permanente do utilizador. Apenas factos NOVOS que NÃO existem no perfil atual.
+            - "corrections": factos do PERFIL ATUAL que contradizem o que o utilizador disse na conversa. action pode ser "update" (substituir) ou "delete" (remover). Se não houver contradições, deixe a lista vazia [].
+            - "individual_memories": lista de TODAS as informações relevantes mencionadas na conversa, cada uma como uma frase independente e auto-contida. Estas serão usadas para busca semântica em futuras conversas. Cada memória deve fazer sentido isoladamente. Inclua: factos pessoais, estados emocionais, eventos mencionados, preferências expressas, preocupações, planos futuros, referências a pessoas. Gere entre 3 a 15 memórias por conversa.
             - Use Português de Portugal (PT-PT).
             - Se não houver factos novos numa categoria, deixe a lista vazia.
-            - Seja conciso.
-            
+            - Seja conciso mas completo.
+
             CONVERSA:
             {full_text}
             """
-            
+
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=prompt,
@@ -733,45 +665,73 @@ async def entrypoint(ctx: JobContext):
                     response_mime_type="application/json"
                 )
             )
-            
+
             data = json.loads(response.text)
             logger.info(f"Sumarização concluída: {data.get('session_summary')}")
-            
-            async with db_pool.acquire() as connection:
-                # 1. Guardar o resumo como memória episódica
-                summary_text = f"Resumo da Sessão: {data.get('session_summary')}. Estado Emocional: {data.get('emotional_state')}."
-                
-                # Gerar embedding para o resumo
-                try:
-                    res_emb = client.models.embed_content(
-                        model="gemini-embedding-001",
-                        contents=summary_text,
-                    )
-                    embedding_str = str(res_emb.embeddings[0].values)
-                    await connection.execute("""
-                        INSERT INTO user_memories (user_id, content, embedding, created_at)
-                        VALUES ($1::uuid, $2, $3::vector, NOW())
-                    """, user_identity, summary_text, embedding_str)
-                except Exception as e_emb:
-                    logger.error(f"Erro ao gerar embedding do resumo: {e_emb}")
 
-                # 2. Guardar no Histórico de Sessões para Relatórios
+            # --- BATCH EMBEDDING: Gerar embeddings para todas as memórias individuais ---
+            individual_memories = data.get("individual_memories", [])[:15]  # Cap máximo de 15
+            memory_embeddings = []
+
+            if individual_memories:
+                try:
+                    # Batch embed: uma única chamada API para todas as memórias
+                    emb_response = await asyncio.to_thread(
+                        client.models.embed_content,
+                        model="text-multilingual-embedding-002",
+                        contents=individual_memories
+                    )
+                    memory_embeddings = [e.values for e in emb_response.embeddings]
+                    logger.info(f"Gerados {len(memory_embeddings)} embeddings para memórias individuais.")
+                except Exception as e_batch:
+                    logger.error(f"Batch embedding falhou: {e_batch}. A tentar um a um...")
+                    # Fallback: gerar um a um
+                    for mem_text in individual_memories:
+                        try:
+                            single_resp = await asyncio.to_thread(
+                                client.models.embed_content,
+                                model="text-multilingual-embedding-002",
+                                contents=mem_text
+                            )
+                            memory_embeddings.append(single_resp.embeddings[0].values)
+                        except Exception as e_single:
+                            logger.error(f"Embedding falhou para '{mem_text[:50]}': {e_single}")
+                            memory_embeddings.append(None)
+
+            async with db_pool.acquire() as connection:
+                # 1. Inserir MEMÓRIAS INDIVIDUAIS em user_memories (com embedding cada)
+                inserted_count = 0
+                for mem_text, mem_emb in zip(individual_memories, memory_embeddings):
+                    if mem_emb is None:
+                        continue
+                    try:
+                        await connection.execute("""
+                            INSERT INTO user_memories (user_id, content, embedding, memory_type, created_at)
+                            VALUES ($1::uuid, $2, $3::vector, 'fact', NOW())
+                        """, user_identity, mem_text, str(mem_emb))
+                        inserted_count += 1
+                    except Exception as e_ins:
+                        logger.error(f"Falha ao inserir memória '{mem_text[:50]}': {e_ins}")
+
+                logger.info(f"Inseridas {inserted_count}/{len(individual_memories)} memórias individuais em user_memories.")
+
+                # 2. Guardar no Histórico de Sessões para Relatórios (N8N trigger)
                 try:
                     await connection.execute("""
                         INSERT INTO session_summaries (user_id, session_summary, emotional_state, new_facts, created_at)
                         VALUES ($1::uuid, $2, $3, $4::jsonb, NOW())
                     """, user_identity, data.get('session_summary'), data.get('emotional_state'), json.dumps(data.get('new_facts')))
-                    logger.info("Histórico de sessão gravado para relatórios semanais.")
+                    logger.info("Histórico de sessão gravado para relatórios (N8N).")
                 except Exception as e_hist:
                     logger.error(f"Erro ao gravar histórico de sessão: {e_hist}")
 
-                # 3. Atualizar o Profile JSON com os novos factos
+                # 3. Atualizar o Profile JSON com novos factos
                 row = await connection.fetchrow("SELECT profile FROM users WHERE id::text = $1", user_identity)
                 current_profile = {}
                 if row and row['profile']:
                     p = row['profile']
                     current_profile = json.loads(p) if isinstance(p, str) else p
-                
+
                 new_facts = data.get("new_facts", {})
                 updated = False
                 for cat, items in new_facts.items():
@@ -780,15 +740,31 @@ async def entrypoint(ctx: JobContext):
                             current_profile[cat] = []
                         if not isinstance(current_profile[cat], list):
                             current_profile[cat] = [str(current_profile[cat])]
-                        
+
                         for item in items:
                             if item not in current_profile[cat]:
                                 current_profile[cat].append(item)
                                 updated = True
-                
+
+                # 4. Aplicar correções ao perfil (contradições detetadas)
+                corrections = data.get("corrections", [])
+                for correction in corrections:
+                    cat = correction.get("category", "")
+                    old_fact = correction.get("old_fact", "")
+                    new_fact = correction.get("new_fact", "")
+                    action = correction.get("action", "update")
+
+                    if cat in current_profile and isinstance(current_profile[cat], list):
+                        if old_fact in current_profile[cat]:
+                            current_profile[cat].remove(old_fact)
+                            if action == "update" and new_fact:
+                                current_profile[cat].append(new_fact)
+                            updated = True
+                            logger.info(f"Correção aplicada: [{cat}] '{old_fact}' -> '{new_fact}' ({action})")
+
                 if updated:
                     await connection.execute("UPDATE users SET profile = $2::jsonb WHERE id::text = $1", user_identity, json.dumps(current_profile))
-                    logger.info("Perfil atualizado com novos factos da sessão.")
+                    logger.info("Perfil atualizado com novos factos e correções da sessão.")
 
         except Exception as e:
             logger.error(f"Erro durante a sumarização final: {e}")
@@ -821,10 +797,10 @@ async def entrypoint(ctx: JobContext):
     async def shutdown_callback():
         logger.info("[SHUTDOWN CALLBACK] Iniciado pelo worker.")
         try:
-            await asyncio.wait_for(summarize_session_task(), timeout=30.0)
+            await asyncio.wait_for(summarize_session_task(), timeout=60.0)
             logger.info("[SHUTDOWN CALLBACK] Sumarização concluída.")
         except asyncio.TimeoutError:
-            logger.warning("[SHUTDOWN CALLBACK] Sumarização excedeu timeout de 30s.")
+            logger.warning("[SHUTDOWN CALLBACK] Sumarização excedeu timeout de 60s.")
         except Exception as e:
             logger.error(f"[SHUTDOWN CALLBACK] Erro: {e}")
     

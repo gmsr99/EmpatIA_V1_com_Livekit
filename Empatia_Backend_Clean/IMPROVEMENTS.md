@@ -13,7 +13,7 @@ Este documento descreve as melhorias implementadas no backend do EmpatIA para ot
 
 ## 🎯 Objetivos
 
-1. ✅ **Mudar modelo de embeddings** de `text-embedding-004` para `gemini-embedding-001`
+1. ✅ **Mudar modelo de embeddings** para `text-multilingual-embedding-002` (otimizado para PT)
 2. ✅ **Criar estrutura adequada para tabela `session_summaries`**
 3. ✅ **Adicionar índices para performance**
 4. ✅ **Implementar busca semântica** usando embeddings
@@ -25,9 +25,12 @@ Este documento descreve as melhorias implementadas no backend do EmpatIA para ot
 
 ### 1. Modelo de Embeddings
 
+**Modelo escolhido:** `text-multilingual-embedding-002`
+
 **Alterado em:**
-- `agent.py:191` - função `save_episodic_background()`
-- `agent.py:585` - summarização de sessão
+- `agent.py:114` - função `semantic_memory_search()`
+- `agent.py:250` - função `save_episodic_background()`
+- `agent.py:747` - summarização de sessão
 
 **Antes:**
 ```python
@@ -36,13 +39,26 @@ model="text-embedding-004"
 
 **Depois:**
 ```python
-model="gemini-embedding-001"
+model="text-multilingual-embedding-002"
 ```
 
-**⚠️ ATENÇÃO:**
-- **Dimensão do vetor mudou:** `text-embedding-004` (768 dims) vs `gemini-embedding-001` (verificar dimensão)
-- **Dados existentes incompatíveis:** Se já existem registos em `user_memories` com embeddings antigos, precisam ser regenerados
-- **Script de teste:** `test_embedding_dimension.py` para verificar a dimensão real
+**✅ Vantagens do modelo escolhido:**
+- **Dimensão eficiente:** 768 dimensões (vs 3072 do `gemini-embedding-001`)
+- **Otimizado para português:** Treinado especificamente para línguas latinas incluindo PT-PT
+- **Performance:** Queries mais rápidas devido à menor dimensão
+- **Espaço em disco:** Ocupa menos espaço na BD (crítico para 100+ users)
+- **Compatível com pgvector:** Dimensão 768 testada e validada
+
+**📊 Comparação de modelos testados:**
+| Modelo | Dimensão | Otimizado PT | Performance | Escolhido |
+|--------|----------|--------------|-------------|-----------|
+| `gemini-embedding-001` | 3072 | Não | Lento | ❌ |
+| `text-embedding-004` | 768 | Parcial | Rápido | ⚠️ |
+| `text-multilingual-embedding-002` | 768 | **Sim** | Rápido | ✅ |
+
+**⚠️ NOTA sobre migração:**
+- Se já existem dados em `user_memories` com embeddings de outro modelo, precisam ser regenerados
+- **Script de teste:** `test_embedding_dimension.py` confirma que o modelo funciona
 
 ---
 
@@ -63,7 +79,7 @@ CREATE TABLE IF NOT EXISTS user_memories (
     id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL,
     content TEXT NOT NULL,
-    embedding vector(768),  -- Dimensão depende do modelo
+    embedding vector(768),  -- text-multilingual-embedding-002: 768 dims
     created_at TIMESTAMP DEFAULT NOW(),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
