@@ -1,6 +1,7 @@
 import logging
 import os
 import asyncio
+import time
 from typing import Annotated
 from dotenv import load_dotenv
 
@@ -17,12 +18,14 @@ from livekit.agents import (
 )
 from livekit.plugins import google
 from google.genai.types import (
-    RealtimeInputConfig, 
-    AutomaticActivityDetection, 
+    RealtimeInputConfig,
+    AutomaticActivityDetection,
     EndSensitivity,
     StartSensitivity,
     AudioTranscriptionConfig,
-    Behavior
+    Behavior,
+    SessionResumptionConfig,
+    ContextWindowCompressionConfig
 )
 
 # --- MONKEY PATCH: FIX COMPLETO PARA STUTTERING DURANTE TOOL CALLS ---
@@ -80,10 +83,60 @@ def _patched_handle_tool_calls(self, tool_call: genai_types.LiveServerToolCall) 
     # Agora deixamos a geração continuar até que o servidor envie turn_complete.
 
 realtime_api.RealtimeSession._handle_tool_calls = _patched_handle_tool_calls
+
+# --- PATCH 3: Interceptar SessionResumptionUpdate messages ---
+# O LiveKit SDK não expõe SessionResumptionUpdate messages por padrão.
+# Fazemos patch do _handle_response para interceptar e guardar handles.
+
+_original_handle_response = realtime_api.RealtimeSession._handle_response
+
+async def _patched_handle_response(self, resp: genai_types.LiveServerMessage):
+    """
+    Intercepta respostas do servidor para capturar SessionResumptionUpdate.
+    Chama o handler original depois de processar.
+    """
+    # Verificar se é um SessionResumptionUpdate
+    if hasattr(resp, 'session_resumption_update') and resp.session_resumption_update:
+        update = resp.session_resumption_update
+
+        # Obter user_identity do contexto global
+        # (definido no entrypoint antes de iniciar a sessão)
+        global _current_user_identity
+        user_identity = _current_user_identity
+
+        if user_identity and hasattr(update, 'new_handle') and update.new_handle:
+            # Guardar handle diretamente no cache global
+            # (o dict _session_handles será definido abaixo, mas Python permite acesso)
+            import time
+            global _session_handles
+
+            resumable = getattr(update, 'resumable', False)
+            last_msg_idx = getattr(update, 'last_consumed_client_message_index', 0)
+
+            _session_handles[user_identity] = {
+                "handle": update.new_handle,
+                "resumable": resumable,
+                "timestamp": time.time(),
+                "last_message_index": last_msg_idx
+            }
+
+            # Logging (logger já está disponível neste ponto)
+            import logging
+            log = logging.getLogger("empatia-agent")
+            log.info(f"[SessionResumption] Handle guardado: user={user_identity[:8]}..., resumable={resumable}, msg_idx={last_msg_idx}")
+
+    # Chamar handler original
+    return await _original_handle_response(self, resp)
+
+realtime_api.RealtimeSession._handle_response = _patched_handle_response
 # -----------------------------------------------------------------
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("empatia-agent")
+
+# --- CONTEXTO GLOBAL (para monkey patches acederem) ---
+_current_user_identity = None
+_session_handles = {}  # Cache de session resumption handles
 
 # --- CACHE DO CLIENTE GENAI (evita criar novo a cada chamada) ---
 _genai_client = None
@@ -99,6 +152,58 @@ def _get_genai_client():
         )
         logger.info("genai.Client criado e cached.")
     return _genai_client
+
+
+# --- SESSION RESUMPTION HELPER FUNCTIONS ---
+# Cache já declarado no topo do ficheiro como: _session_handles = {}
+# Formato: {user_identity: {"handle": str, "resumable": bool, "timestamp": float, "last_message_index": int}}
+
+def save_session_handle(user_identity: str, handle: str, resumable: bool, last_message_index: int = 0):
+    """
+    Guarda um session resumption handle em memória.
+
+    Args:
+        user_identity: UUID do utilizador
+        handle: Token de resumption recebido do servidor
+        resumable: Se a sessão pode ser retomada neste ponto
+        last_message_index: Índice da última mensagem do cliente processada
+    """
+    import time
+    _session_handles[user_identity] = {
+        "handle": handle,
+        "resumable": resumable,
+        "timestamp": time.time(),
+        "last_message_index": last_message_index
+    }
+    logger.info(f"Session handle guardado para {user_identity[:8]}... (resumable={resumable}, msg_idx={last_message_index})")
+
+def get_session_handle(user_identity: str) -> dict | None:
+    """
+    Obtém o session resumption handle guardado.
+
+    Returns:
+        Dict com handle info ou None se não existir ou expirado
+    """
+    import time
+    if user_identity not in _session_handles:
+        return None
+
+    handle_data = _session_handles[user_identity]
+
+    # Verificar se expirou (10 minutos = 600s)
+    age = time.time() - handle_data["timestamp"]
+    if age > 600:
+        logger.warning(f"Session handle para {user_identity[:8]}... expirou (age={age:.0f}s)")
+        del _session_handles[user_identity]
+        return None
+
+    return handle_data
+
+def clear_session_handle(user_identity: str):
+    """Remove o session handle guardado."""
+    if user_identity in _session_handles:
+        del _session_handles[user_identity]
+        logger.info(f"Session handle removido para {user_identity[:8]}...")
 
 
 async def semantic_memory_search(connection, user_identity: str, query_text: str, limit: int = 5):
@@ -259,12 +364,26 @@ async def entrypoint(ctx: JobContext):
                 # DEBOUNCE: Requer 300ms de voz contínua para confirmar início de fala.
                 prefix_padding_ms=300,
 
-                # Espera 1000ms de silêncio antes de responder.
+                # Espera 800ms de silêncio antes de responder.
                 # Idosos fazem pausas naturais; 500ms causava interrupções falsas.
-                silence_duration_ms=1000
+                silence_duration_ms=800
             )
         ),
-        
+
+        # --- SESSION RESUMPTION (retomar sessões em caso de desconexão) ---
+        # Permite que idosos com internet instável reconectem sem perder contexto.
+        # O servidor envia checkpoints periodicamente que podem ser usados para retomar.
+        session_resumption=SessionResumptionConfig(
+            transparent=True  # Reconexão transparente com buffer de mensagens
+        ),
+
+        # --- CONTEXT WINDOW COMPRESSION (comprimir contexto para sessões longas) ---
+        # Comprime automaticamente o context window para caber no limite do modelo.
+        # Útil para conversas de 10+ minutos com muitas pausas/silêncios.
+        context_window_compression=ContextWindowCompressionConfig(
+            enabled=True  # Compressão automática quando necessário
+        ),
+
         # --- SYSTEM INSTRUCTION ---
         instructions="""
             # IDENTITY AND PURPOSE
@@ -388,6 +507,21 @@ async def entrypoint(ctx: JobContext):
                     break
         
         logger.info(f"Identidade do Utilizador recebida: {user_identity}")
+
+        # Guardar user_identity em contexto global (para monkey patches acederem)
+        global _current_user_identity
+        _current_user_identity = user_identity
+
+        # Verificar se existe session handle anterior (para resumption)
+        previous_handle = get_session_handle(user_identity)
+        if previous_handle and previous_handle['resumable']:
+            logger.info(f"[SessionResumption] Handle anterior encontrado (age={(time.time() - previous_handle['timestamp']):.1f}s)")
+            logger.info(f"[SessionResumption] NOTA: Resumption automática ainda não implementada no LiveKit SDK")
+            logger.info(f"[SessionResumption] Handle disponível: {previous_handle['handle'][:20]}...")
+            # TODO: Implementar lógica para passar handle ao RealtimeModel
+            # Atualmente, o LiveKit SDK não expõe API para session resumption
+        else:
+            logger.info("[SessionResumption] Sem handle anterior ou não resumable - iniciando nova sessão")
 
         # Buscar perfil do utilizador
         async with db_pool.acquire() as connection:
@@ -819,6 +953,11 @@ async def entrypoint(ctx: JobContext):
             logger.warning("[SHUTDOWN CALLBACK] Sumarização excedeu timeout de 60s.")
         except Exception as e:
             logger.error(f"[SHUTDOWN CALLBACK] Erro: {e}")
+        finally:
+            # Limpar session handle (sessão terminou normalmente)
+            if user_identity:
+                clear_session_handle(user_identity)
+                logger.info(f"[SessionResumption] Handle removido para {user_identity[:8]}... (sessão terminou)")
     
     ctx.add_shutdown_callback(shutdown_callback)
     
