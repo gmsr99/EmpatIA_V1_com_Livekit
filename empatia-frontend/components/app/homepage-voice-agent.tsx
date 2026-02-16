@@ -14,6 +14,11 @@ import {
 } from '@livekit/components-react';
 import { Button } from '@/components/livekit/button';
 import { GlowingRingVisualizer } from './glowing-ring-visualizer';
+import { SpeakingIndicator } from './speaking-indicator';
+import { VolumeIndicator } from './volume-indicator';
+import { OnboardingTutorial } from './onboarding-tutorial';
+import { ConnectionCountdown } from './connection-countdown';
+import { getFriendlyErrorMessage } from '@/lib/error-messages';
 
 export function HomepageVoiceAgent() {
   const { data: session, status } = useSession();
@@ -27,6 +32,17 @@ export function HomepageVoiceAgent() {
   } | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  // Verificar se deve mostrar tutorial
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const completed = localStorage.getItem('empatia_tutorial_completed');
+      if (!completed && status === 'authenticated') {
+        setShowTutorial(true);
+      }
+    }
+  }, [status]);
 
   const connect = useCallback(async () => {
     if (status === 'unauthenticated') {
@@ -55,7 +71,8 @@ export function HomepageVoiceAgent() {
       setConnectionDetails(data);
     } catch (e) {
       console.error(e);
-      setError('Failed to connect. Please try again.');
+      const friendlyMessage = getFriendlyErrorMessage(e);
+      setError(friendlyMessage);
     } finally {
       setIsConnecting(false);
     }
@@ -72,22 +89,8 @@ export function HomepageVoiceAgent() {
       userAgent: navigator.userAgent,
     });
 
-    if (!window.isSecureContext) {
-      setError(
-        'Erro de Segurança: O microfone só funciona em "localhost" ou "https". Verifique o URL.'
-      );
-      return;
-    }
-
-    // Detailed advice for MacOS/Chrome/Safari
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    if (isMac) {
-      setError(
-        'Erro no Microfone: Verifique se o browser tem permissão em "Definições do Sistema > Segurança e Privacidade > Microfone".'
-      );
-    } else {
-      setError('Erro ao aceder ao microfone. Por favor verifique as permissões do browser.');
-    }
+    const friendlyMessage = getFriendlyErrorMessage(failure);
+    setError(friendlyMessage);
   }, []);
 
   if (status === 'loading') {
@@ -109,7 +112,9 @@ export function HomepageVoiceAgent() {
 
   if (connectionDetails) {
     return (
-      <LiveKitRoom
+      <>
+        {showTutorial && <OnboardingTutorial onComplete={() => setShowTutorial(false)} />}
+        <LiveKitRoom
         token={connectionDetails.participantToken}
         serverUrl={connectionDetails.serverUrl}
         connect={true}
@@ -148,11 +153,14 @@ export function HomepageVoiceAgent() {
           </div>
         )}
       </LiveKitRoom>
+      </>
     );
   }
 
   return (
-    <div className={containerClasses}>
+    <>
+      {showTutorial && <OnboardingTutorial onComplete={() => setShowTutorial(false)} />}
+      <div className={containerClasses}>
       {/* Content Vertical Stack */}
       <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4 py-6">
         {/* 1. Text Header */}
@@ -189,12 +197,13 @@ export function HomepageVoiceAgent() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
 function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
   const connectionState = useConnectionState();
-  const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
+  const { isMicrophoneEnabled, localParticipant, isSpeaking: isUserSpeaking } = useLocalParticipant();
 
   // We want to visualize the AGENT's audio, which is a Remote Audio Track.
   const remoteTracks = useTracks([Track.Source.Microphone]).filter(
@@ -203,12 +212,29 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
 
   const agentTrackRef = remoteTracks[0];
   const [stream, setStream] = useState<MediaStream | undefined>(undefined);
+  const [userStream, setUserStream] = useState<MediaStream | undefined>(undefined);
+  const [showCountdown, setShowCountdown] = useState(true);
+  const [isAgentThinking, setIsAgentThinking] = useState(false);
 
+  // Detectar se agent está a falar
+  const isAgentSpeaking = agentTrackRef?.publication?.isSpeaking ?? false;
+
+  // Capturar stream do agent (para visualizer)
   useEffect(() => {
     if (agentTrackRef?.publication?.track?.mediaStream) {
       setStream(agentTrackRef.publication.track.mediaStream);
     }
   }, [agentTrackRef]);
+
+  // Capturar stream do user (para volume indicator)
+  useEffect(() => {
+    if (localParticipant) {
+      const track = localParticipant.getTrackPublication(Track.Source.Microphone);
+      if (track?.track?.mediaStream) {
+        setUserStream(track.track.mediaStream);
+      }
+    }
+  }, [localParticipant]);
 
   const toggleMic = useCallback(async () => {
     if (localParticipant) {
@@ -219,10 +245,24 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
 
   return (
     <div className="relative flex h-full w-full flex-col items-center justify-center p-8">
+      {/* Countdown inicial (3 segundos) */}
+      {showCountdown && connectionState === ConnectionState.Connected && (
+        <ConnectionCountdown onComplete={() => setShowCountdown(false)} />
+      )}
+
       {/* Connection Status Label */}
       <div className="text-brand-lilac absolute top-6 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium tracking-wider uppercase backdrop-blur-md">
         {connectionState === ConnectionState.Connected ? 'Em chamada' : 'A conectar...'}
       </div>
+
+      {/* Indicador de quem está a falar */}
+      {connectionState === ConnectionState.Connected && !showCountdown && (
+        <SpeakingIndicator
+          isAgentSpeaking={isAgentSpeaking}
+          isUserSpeaking={isUserSpeaking}
+          isAgentThinking={isAgentThinking}
+        />
+      )}
 
       <div className="relative flex w-full flex-1 items-center justify-center">
         {connectionState === ConnectionState.Connected ? (
@@ -232,30 +272,44 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
         )}
       </div>
 
-      {/* Controls */}
-      <div className="absolute bottom-6 flex items-center gap-4">
-        {/* Mic Toggle Indicator */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleMic}
-          className={`h-12 w-12 rounded-full border backdrop-blur-md transition-all ${
-            isMicrophoneEnabled
-              ? 'border-white/20 bg-white/10 text-white hover:bg-white/20'
-              : 'border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20'
-          }`}
-        >
-          {isMicrophoneEnabled ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
-        </Button>
+      {/* Indicador de volume (quando user está a falar) */}
+      {connectionState === ConnectionState.Connected && isUserSpeaking && !showCountdown && (
+        <VolumeIndicator stream={userStream} />
+      )}
 
-        <Button
-          variant="destructive"
-          size="icon"
-          className="h-12 w-12 rounded-full border border-red-500/50 bg-red-500/20 text-red-400 backdrop-blur-md hover:bg-red-500/30"
-          onClick={onDisconnect}
-        >
-          <X className="h-6 w-6" />
-        </Button>
+      {/* Controls (botões maiores para idosos) */}
+      <div className="absolute bottom-4 flex items-center gap-6">
+        {/* Mic Toggle com label */}
+        <div className="flex flex-col items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleMic}
+            className={`h-16 w-16 rounded-full border-2 backdrop-blur-md transition-all ${
+              isMicrophoneEnabled
+                ? 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+                : 'border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20'
+            }`}
+            aria-label={isMicrophoneEnabled ? 'Desligar microfone' : 'Ligar microfone'}
+          >
+            {isMicrophoneEnabled ? <Mic className="h-8 w-8" /> : <MicOff className="h-8 w-8" />}
+          </Button>
+          <span className="text-xs text-white/70">Microfone</span>
+        </div>
+
+        {/* Botão desligar com label */}
+        <div className="flex flex-col items-center gap-1">
+          <Button
+            variant="destructive"
+            size="icon"
+            className="h-16 w-16 rounded-full border-2 border-red-500/50 bg-red-500/20 text-red-400 backdrop-blur-md hover:bg-red-500/30"
+            onClick={onDisconnect}
+            aria-label="Desligar chamada"
+          >
+            <X className="h-8 w-8" />
+          </Button>
+          <span className="text-xs text-white/70">Desligar</span>
+        </div>
       </div>
     </div>
   );
