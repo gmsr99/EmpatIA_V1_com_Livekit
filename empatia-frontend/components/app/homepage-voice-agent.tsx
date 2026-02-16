@@ -203,7 +203,7 @@ export function HomepageVoiceAgent() {
 
 function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
   const connectionState = useConnectionState();
-  const { isMicrophoneEnabled, localParticipant, isSpeaking: isUserSpeaking } = useLocalParticipant();
+  const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
 
   // We want to visualize the AGENT's audio, which is a Remote Audio Track.
   const remoteTracks = useTracks([Track.Source.Microphone]).filter(
@@ -218,6 +218,10 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
 
   // Detectar se agent está a falar
   const isAgentSpeaking = agentTrackRef?.publication?.isSpeaking ?? false;
+
+  // Detectar se user está a falar (do microfone track publication)
+  const userMicTrack = localParticipant?.getTrackPublication(Track.Source.Microphone);
+  const isUserSpeaking = userMicTrack?.isSpeaking ?? false;
 
   // Capturar stream do agent (para visualizer)
   useEffect(() => {
