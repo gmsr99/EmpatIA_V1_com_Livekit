@@ -128,7 +128,7 @@ export default async function DashboardPage() {
     client.release();
   }
 
-  const memories = userProfile?.profile ? renderMemories(userProfile.profile) : [];
+  const memories = (userProfile?.profile ? renderMemories(userProfile.profile) : []) || [];
   const firstName = session.user.name?.split(' ')[0] || session.user.name;
 
   return (
@@ -194,9 +194,9 @@ export default async function DashboardPage() {
                 <p className="text-base font-semibold text-white">
                   {userProfile?.created_at
                     ? new Date(userProfile.created_at).toLocaleDateString('pt-PT', {
-                        month: 'long',
-                        year: 'numeric',
-                      })
+                      month: 'long',
+                      year: 'numeric',
+                    })
                     : 'Recentemente'}
                 </p>
               </div>
