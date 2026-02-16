@@ -34,7 +34,7 @@ function formatDate(date: Date): string {
 
 // Helper para renderizar memórias de forma amigável
 function renderMemories(profile: any) {
-  if (!profile) return null;
+  if (!profile) return [];
 
   const sections = [];
 
