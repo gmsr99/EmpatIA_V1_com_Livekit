@@ -216,12 +216,12 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
   const [showCountdown, setShowCountdown] = useState(true);
   const [isAgentThinking, setIsAgentThinking] = useState(false);
 
-  // Detectar se agent está a falar
-  const isAgentSpeaking = agentTrackRef?.publication?.isSpeaking ?? false;
+  // Detectar se agent está a falar (via participant)
+  const agentParticipant = agentTrackRef?.participant as RemoteParticipant | undefined;
+  const isAgentSpeaking = agentParticipant?.isSpeaking ?? false;
 
-  // Detectar se user está a falar (do microfone track publication)
-  const userMicTrack = localParticipant?.getTrackPublication(Track.Source.Microphone);
-  const isUserSpeaking = userMicTrack?.isSpeaking ?? false;
+  // Detectar se user está a falar (via localParticipant)
+  const isUserSpeaking = localParticipant?.isSpeaking ?? false;
 
   // Capturar stream do agent (para visualizer)
   useEffect(() => {
