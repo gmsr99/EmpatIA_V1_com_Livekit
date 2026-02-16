@@ -25,8 +25,8 @@ export function SpeakingIndicator({
 
   if (isAgentSpeaking) {
     return (
-      <div className="absolute top-20 left-1/2 z-10 flex -translate-x-1/2 animate-pulse items-center gap-2 rounded-full border border-brand-lilac/50 bg-brand-lilac/10 px-4 py-2 backdrop-blur-md">
-        <div className="h-2 w-2 animate-ping rounded-full bg-brand-lilac" />
+      <div className="border-brand-lilac/50 bg-brand-lilac/10 absolute top-20 left-1/2 z-10 flex -translate-x-1/2 animate-pulse items-center gap-2 rounded-full border px-4 py-2 backdrop-blur-md">
+        <div className="bg-brand-lilac h-2 w-2 animate-ping rounded-full" />
         <span className="text-sm font-medium text-white">EmpatIA está a falar...</span>
       </div>
     );

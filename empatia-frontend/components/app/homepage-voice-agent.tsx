@@ -13,12 +13,12 @@ import {
   useTracks,
 } from '@livekit/components-react';
 import { Button } from '@/components/livekit/button';
+import { getFriendlyErrorMessage } from '@/lib/error-messages';
+import { ConnectionCountdown } from './connection-countdown';
 import { GlowingRingVisualizer } from './glowing-ring-visualizer';
+import { OnboardingTutorial } from './onboarding-tutorial';
 import { SpeakingIndicator } from './speaking-indicator';
 import { VolumeIndicator } from './volume-indicator';
-import { OnboardingTutorial } from './onboarding-tutorial';
-import { ConnectionCountdown } from './connection-countdown';
-import { getFriendlyErrorMessage } from '@/lib/error-messages';
 
 export function HomepageVoiceAgent() {
   const { data: session, status } = useSession();
@@ -115,44 +115,44 @@ export function HomepageVoiceAgent() {
       <>
         {showTutorial && <OnboardingTutorial onComplete={() => setShowTutorial(false)} />}
         <LiveKitRoom
-        token={connectionDetails.participantToken}
-        serverUrl={connectionDetails.serverUrl}
-        connect={true}
-        audio={true}
-        video={false}
-        onDisconnected={disconnect}
-        onMediaDeviceFailure={handleMediaDeviceFailure}
-        className={containerClasses}
-      >
-        <RoomAudioRenderer />
-        <AgentVisualizer onDisconnect={disconnect} />
-        {error && (
-          <div className="absolute top-4 right-4 left-4 z-50 flex flex-col gap-2 rounded-lg border border-red-500/50 bg-red-900/90 p-3 text-sm text-red-100 shadow-xl backdrop-blur-md">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
-              <button
-                onClick={() => setError(null)}
-                className="ml-auto opacity-70 hover:opacity-100"
+          token={connectionDetails.participantToken}
+          serverUrl={connectionDetails.serverUrl}
+          connect={true}
+          audio={true}
+          video={false}
+          onDisconnected={disconnect}
+          onMediaDeviceFailure={handleMediaDeviceFailure}
+          className={containerClasses}
+        >
+          <RoomAudioRenderer />
+          <AgentVisualizer onDisconnect={disconnect} />
+          {error && (
+            <div className="absolute top-4 right-4 left-4 z-50 flex flex-col gap-2 rounded-lg border border-red-500/50 bg-red-900/90 p-3 text-sm text-red-100 shadow-xl backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{error}</span>
+                <button
+                  onClick={() => setError(null)}
+                  className="ml-auto opacity-70 hover:opacity-100"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setError(null);
+                  disconnect();
+                  setTimeout(connect, 100);
+                }}
+                className="mt-1 h-8 bg-white/10 text-xs text-white hover:bg-white/20"
               >
-                <X className="h-4 w-4" />
-              </button>
+                Tentar Novamente
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setError(null);
-                disconnect();
-                setTimeout(connect, 100);
-              }}
-              className="mt-1 h-8 bg-white/10 text-xs text-white hover:bg-white/20"
-            >
-              Tentar Novamente
-            </Button>
-          </div>
-        )}
-      </LiveKitRoom>
+          )}
+        </LiveKitRoom>
       </>
     );
   }
@@ -161,42 +161,44 @@ export function HomepageVoiceAgent() {
     <>
       {showTutorial && <OnboardingTutorial onComplete={() => setShowTutorial(false)} />}
       <div className={containerClasses}>
-      {/* Content Vertical Stack */}
-      <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4 py-6">
-        {/* 1. Text Header */}
-        <div className="space-y-1 text-center">
-          <div className="text-brand-lilac text-xs font-medium tracking-widest uppercase">
-            Olá, {session?.user?.name?.split(' ')[0]}
+        {/* Content Vertical Stack */}
+        <div className="relative z-10 flex h-full w-full flex-col items-center justify-center gap-4 py-6">
+          {/* 1. Text Header */}
+          <div className="space-y-1 text-center">
+            <div className="text-brand-lilac text-xs font-medium tracking-widest uppercase">
+              Olá, {session?.user?.name?.split(' ')[0]}
+            </div>
+            <h3 className="font-heading text-xl text-white/90">Posso ajudar?</h3>
           </div>
-          <h3 className="font-heading text-xl text-white/90">Posso ajudar?</h3>
-        </div>
 
-        {/* 2. Visualizer (Rings) */}
-        <div className="flex items-center justify-center">
-          <GlowingRingVisualizer height="180px" width="180px" />
-        </div>
+          {/* 2. Visualizer (Rings) */}
+          <div className="flex items-center justify-center">
+            <GlowingRingVisualizer height="180px" width="180px" />
+          </div>
 
-        {/* 3. Button */}
-        <div className="flex flex-col items-center gap-2">
-          <Button
-            onClick={connect}
-            disabled={isConnecting}
-            className="group text-brand-signature relative inline-flex h-11 items-center gap-2.5 overflow-hidden rounded-full bg-white px-6 text-sm font-semibold shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all hover:scale-105 hover:bg-white/90 disabled:opacity-70"
-          >
-            {isConnecting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <MessageCircle className="h-4 w-4 transition-transform group-hover:rotate-12" />
+          {/* 3. Button */}
+          <div className="flex flex-col items-center gap-2">
+            <Button
+              onClick={connect}
+              disabled={isConnecting}
+              className="group text-brand-signature relative inline-flex h-11 items-center gap-2.5 overflow-hidden rounded-full bg-white px-6 text-sm font-semibold shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all hover:scale-105 hover:bg-white/90 disabled:opacity-70"
+            >
+              {isConnecting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageCircle className="h-4 w-4 transition-transform group-hover:rotate-12" />
+              )}
+              <span>{isConnecting ? 'A Ligação...' : 'Conversar Agora'}</span>
+            </Button>
+
+            {error && (
+              <p className="max-w-[250px] animate-pulse text-center text-xs text-red-400">
+                {error}
+              </p>
             )}
-            <span>{isConnecting ? 'A Ligação...' : 'Conversar Agora'}</span>
-          </Button>
-
-          {error && (
-            <p className="max-w-[250px] animate-pulse text-center text-xs text-red-400">{error}</p>
-          )}
+          </div>
         </div>
       </div>
-    </div>
     </>
   );
 }
@@ -214,7 +216,7 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
   const [stream, setStream] = useState<MediaStream | undefined>(undefined);
   const [userStream, setUserStream] = useState<MediaStream | undefined>(undefined);
   const [showCountdown, setShowCountdown] = useState(true);
-  const [isAgentThinking, setIsAgentThinking] = useState(false);
+  const [isAgentThinking] = useState(false);
 
   // Detectar se agent está a falar (via participant)
   const agentParticipant = agentTrackRef?.participant as RemoteParticipant | undefined;

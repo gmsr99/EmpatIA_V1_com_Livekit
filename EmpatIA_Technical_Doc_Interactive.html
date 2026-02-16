@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EmpatIA v1.2 - Documentação Técnica Interativa</title>
+
+    <!-- Fonts: Inter & Montserrat -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap"
+        rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        heading: ['Montserrat', 'sans-serif'],
+                    },
+                    colors: {
+                        background: 'hsl(260 50% 5%)',
+                        foreground: 'hsl(210 40% 98%)',
+                        card: 'hsl(260 40% 8%)',
+                        'card-foreground': 'hsl(210 40% 98%)',
+                        popover: 'hsl(260 40% 8%)',
+                        'popover-foreground': 'hsl(210 40% 98%)',
+                        primary: 'hsl(270 100% 60%)',
+                        'primary-foreground': 'hsl(210 40% 98%)',
+                        secondary: 'hsl(290 100% 70%)',
+                        'secondary-foreground': 'hsl(210 40% 98%)',
+                        muted: 'hsl(260 30% 15%)',
+                        'muted-foreground': 'hsl(215 20.2% 65.1%)',
+                        accent: 'hsl(260 30% 15%)',
+                        'accent-foreground': 'hsl(210 40% 98%)',
+                        destructive: 'hsl(0 62.8% 30.6%)',
+                        'destructive-foreground': 'hsl(210 40% 98%)',
+                        border: 'hsl(260 30% 20%)',
+                        input: 'hsl(260 30% 20%)',
+                        ring: 'hsl(270 100% 60%)',
+                        'brand-lilac': '#d8b4fe',
+                        'brand-blue-soft': '#a9c8e8',
+                        'brand-blue-deep': '#4a5e90',
+                        'brand-signature': '#9333ea',
+                        'brand-surface': '#0f0720',
+                    },
+                    borderRadius: {
+                        lg: '0.5rem',
+                        md: 'calc(0.5rem - 2px)',
+                        sm: 'calc(0.5rem - 4px)',
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        .node-active {
+            border-color: hsl(270 100% 60%) !important;
+            /* primary */
+            background-color: hsl(260 40% 8%) !important;
+            /* card */
+            box-shadow: 0 0 0 2px hsl(270 100% 60%);
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 300px;
+        }
+
+        /* Custom Scrollbar for Dark Mode */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: hsl(260 50% 5%);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: hsl(260 30% 20%);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: hsl(270 100% 60%);
+        }
+    </style>
+    <!-- Chosen Palette: Warm Neutrals & Teal. Background: Stone-50. Accents: Teal-600 (Tech), Orange-500 (Voice/Warmth). Text: Slate-800. -->
+    <!-- Application Structure Plan:
+        1. Hero: Overview & Key Metrics (Status, Concept).
+        2. Architecture Map: Interactive flow diagram. Users click components (Frontend, LiveKit, Backend, DB) to see technical details side-by-side.
+        3. Tech Stack Tabs: Organized view of the stack (Frontend, Backend, Data).
+        4. Memory Architecture Comparison: Toggle between "Real-time" and "Post-Call" workflows to explain the core architectural shift in v1.2.
+        5. Latency Breakdown: Chart.js visualization of the 1.5s delay budget.
+        6. Database Schema: Interactive entity cards explaining the SQL structure.
+        7. Developer Notes: Accordion style list of "Gotchas".
+    -->
+    <!-- Visualization & Content Choices:
+        1. Latency Breakdown -> Stacked Bar Chart (Chart.js) -> Visualize where the 1.5s goes (VAD vs Network vs AI).
+        2. Architecture Flow -> CSS Grid + JS Interaction -> Clicking nodes updates a text panel. Avoids complex SVGs/Mermaid while keeping interactivity.
+        3. Memory Flow -> Dynamic HTML Content replacement -> Switching modes changes the explanation and highlighted steps.
+        4. DB Schema -> Flexbox Cards -> Simple representation of tables and columns.
+        -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+</head>
+
+<body
+    class="bg-background text-foreground antialiased selection:bg-primary selection:text-primary-foreground min-h-screen relative">
+
+    <!-- Ambient Background Glow -->
+    <div
+        class="fixed inset-0 z-[-1] bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-brand-signature/20 via-background to-background pointer-events-none">
+    </div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-border">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-2xl font-bold text-primary tracking-tight font-heading">EmpatIA <span
+                            class="text-muted-foreground font-light text-sm ml-2">v1.2 Doc Técnica</span></span>
+                </div>
+                <div class="hidden md:flex space-x-8 items-center">
+                    <a href="#overview"
+                        class="text-muted-foreground hover:text-primary px-3 py-2 text-sm font-medium transition-colors">Visão
+                        Geral</a>
+                    <a href="#architecture"
+                        class="text-muted-foreground hover:text-primary px-3 py-2 text-sm font-medium transition-colors">Arquitetura</a>
+                    <a href="#memory"
+                        class="text-muted-foreground hover:text-primary px-3 py-2 text-sm font-medium transition-colors">Memória</a>
+                    <a href="#data"
+                        class="text-muted-foreground hover:text-primary px-3 py-2 text-sm font-medium transition-colors">Dados</a>
+                    <a href="#gotchas"
+                        class="text-muted-foreground hover:text-primary px-3 py-2 text-sm font-medium transition-colors">Dev
+                        Notes</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header id="overview" class="pt-32 pb-20 lg:pt-40 lg:pb-32 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div class="lg:flex lg:items-center lg:justify-between">
+            <div class="lg:w-2/3">
+                <span
+                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary/20 text-primary mb-4 border border-primary/20">
+                    Status: Produção (Fev 2026)
+                </span>
+                <h1 class="text-4xl font-extrabold text-foreground sm:text-5xl mb-4 font-heading tracking-tight">
+                    Voice-First AI para Seniores
+                </h1>
+                <p class="text-xl text-muted-foreground leading-relaxed mb-8 max-w-2xl">
+                    A EmpatIA v1.2 elimina intermediários STT/TTS. Um sistema <strong class="text-foreground">Native
+                        Audio
+                        Real-time</strong> focado em latência mínima e conexão emocional, combatendo a solidão
+                    através de conversas naturais em <strong class="text-foreground">Português Europeu</strong>.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div
+                        class="bg-card p-6 rounded-xl border border-border/50 hover:border-primary/50 transition-colors">
+                        <h3 class="font-bold text-foreground mb-1">Zero STT/TTS</h3>
+                        <p class="text-sm text-muted-foreground">Áudio entra, Áudio sai. Entoação humana real.</p>
+                    </div>
+                    <div
+                        class="bg-card p-6 rounded-xl border border-border/50 hover:border-primary/50 transition-colors">
+                        <h3 class="font-bold text-foreground mb-1">Memória Híbrida</h3>
+                        <p class="text-sm text-muted-foreground">Fast path para conversar, Slow path para lembrar.</p>
+                    </div>
+                    <div
+                        class="bg-card p-6 rounded-xl border border-border/50 hover:border-primary/50 transition-colors">
+                        <h3 class="font-bold text-foreground mb-1">Infraestrutura EU</h3>
+                        <p class="text-sm text-muted-foreground">GDPR Compliant. VPS + LiveKit na Alemanha.</p>
+                    </div>
+                </div>
+            </div>
+            <!-- Latency Chart Container -->
+            <div class="lg:w-1/3 mt-12 lg:mt-0 lg:pl-12">
+                <div class="bg-card p-6 rounded-2xl shadow-2xl border border-border/50 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-4 opacity-10">
+                        <svg width="100" height="100" viewBox="0 0 24 24" fill="currentColor" class="text-primary">
+                            <path
+                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold text-foreground mb-2">Orçamento de Latência (~1.5s)</h3>
+                    <p class="text-xs text-muted-foreground mb-6">Breakdown estimado do tempo de resposta ponta-a-ponta.
+                    </p>
+                    <div class="chart-container">
+                        <canvas id="latencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Architecture Explorer -->
+    <section id="architecture" class="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="mb-12">
+            <h2 class="text-3xl font-bold text-foreground font-heading">Mapa de Arquitetura</h2>
+            <p class="mt-4 text-lg text-muted-foreground max-w-3xl">
+                Explore o fluxo de dados clicando nos componentes abaixo. Entenda como o áudio viaja do frontend até ao
+                modelo nativo e como a persistência é gerida.
+            </p>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-8 h-auto lg:h-[600px]">
+            <!-- Left: Interactive Diagram -->
+            <div
+                class="lg:col-span-2 rounded-xl border border-border/50 p-8 relative overflow-hidden bg-white/5 backdrop-blur-sm">
+                <div
+                    class="absolute top-0 right-0 bg-border/50 px-3 py-1 text-xs font-mono text-muted-foreground rounded-bl-lg border-b border-l border-border/50">
+                    Interactive Map</div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 h-full content-center relative z-10">
+
+                    <!-- Frontend Node -->
+                    <div id="node-frontend" onclick="showDetails('frontend')"
+                        class="architecture-node cursor-pointer p-6 rounded-xl border-2 border-border/50 hover:border-primary/50 bg-card transition-all duration-300 group shadow-lg">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-2xl">🖥️</span>
+                            <span
+                                class="text-xs font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Next.js
+                                14</span>
+                        </div>
+                        <h3 class="font-bold text-lg text-foreground group-hover:text-primary transition-colors">
+                            Frontend (Cliente)</h3>
+                        <p class="text-sm text-muted-foreground mt-2">WebRTC via LiveKit Client. Gere a sessão de áudio
+                            no
+                            browser.</p>
+                    </div>
+
+                    <!-- LiveKit Node -->
+                    <div id="node-livekit" onclick="showDetails('livekit')"
+                        class="architecture-node cursor-pointer p-6 rounded-xl border-2 border-border/50 hover:border-primary/50 bg-card transition-all duration-300 group md:col-start-2 shadow-lg">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-2xl">📡</span>
+                            <span
+                                class="text-xs font-mono bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded border border-purple-500/20">Region:
+                                DE</span>
+                        </div>
+                        <h3 class="font-bold text-lg text-foreground group-hover:text-primary transition-colors">LiveKit
+                            Cloud</h3>
+                        <p class="text-sm text-muted-foreground mt-2">Bridge WebRTC de ultra-baixa latência. Gere salas
+                            e
+                            routing de áudio.</p>
+                    </div>
+
+                    <!-- Backend Node -->
+                    <div id="node-backend" onclick="showDetails('backend')"
+                        class="architecture-node cursor-pointer p-6 rounded-xl border-2 border-border/50 hover:border-primary/50 bg-card transition-all duration-300 group shadow-lg">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-2xl">🧠</span>
+                            <span
+                                class="text-xs font-mono bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded border border-yellow-500/20">Python
+                                Agent</span>
+                        </div>
+                        <h3 class="font-bold text-lg text-foreground group-hover:text-primary transition-colors">Backend
+                            (VPS)</h3>
+                        <p class="text-sm text-muted-foreground mt-2">Docker. Orquestra o Gemini Native Audio e gere
+                            ferramentas.</p>
+                    </div>
+
+                    <!-- Services Node -->
+                    <div id="node-services" onclick="showDetails('services')"
+                        class="architecture-node cursor-pointer p-6 rounded-xl border-2 border-border/50 hover:border-primary/50 bg-card transition-all duration-300 group md:col-start-2 shadow-lg">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-2xl">💾</span>
+                            <span
+                                class="text-xs font-mono bg-green-500/10 text-green-500 px-2 py-0.5 rounded border border-green-500/20">PG
+                                +
+                                Vertex</span>
+                        </div>
+                        <h3 class="font-bold text-lg text-foreground group-hover:text-primary transition-colors">Dados &
+                            IA</h3>
+                        <p class="text-sm text-muted-foreground mt-2">PostgreSQL (Vector) e Vertex AI (Gemini Models).
+                        </p>
+                    </div>
+
+                </div>
+
+                <!-- Connection Lines (Visual representation via simple borders/arrows implied by grid layout) -->
+                <div
+                    class="hidden md:block absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                    <div class="w-full h-full flex flex-col items-center justify-center">
+                        <span
+                            class="text-4xl text-border/20 font-heading font-black tracking-widest uppercase rotate-45 select-none">Flow</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Details Panel -->
+            <div
+                class="bg-card rounded-xl p-6 border border-border/50 flex flex-col h-full shadow-lg relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
+
+                <div class="border-b border-border/50 pb-4 mb-4 flex justify-between items-center relative z-10">
+                    <h3 id="detail-title" class="text-xl font-bold text-primary font-heading">Selecione um Componente
+                    </h3>
+                    <span
+                        class="text-xs text-muted-foreground font-mono bg-background px-2 py-1 rounded border border-border/50">technical_specs.json</span>
+                </div>
+                <div id="detail-content" class="flex-grow overflow-y-auto custom-scroll pr-2 space-y-4 relative z-10">
+                    <p class="text-muted-foreground">Clique nos cartões à esquerda para ver os detalhes técnicos de
+                        implementação, stack específica e responsabilidades de cada camada da arquitetura EmpatIA v1.2.
+                    </p>
+
+                    <div class="bg-background/50 p-4 rounded border border-border/50 mt-6">
+                        <h4 class="font-bold text-foreground mb-2 text-sm">💡 Dica de Navegação</h4>
+                        <p class="text-sm text-muted-foreground">Comece pelo <strong>Frontend</strong> e siga o fluxo
+                            lógico
+                            dos dados.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Memory Architecture Deep Dive -->
+    <section id="memory" class="py-24 bg-card/30 border-y border-border/50 backdrop-blur-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl font-bold text-foreground font-heading">Arquitetura de Memória Dual</h2>
+                <p class="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+                    O segredo da fluidez na v1.2 é a separação temporal. Resolvemos o problema de "stuttering" movendo a
+                    escrita para o processo assíncrono.
+                </p>
+            </div>
+
+            <div class="flex justify-center mb-12">
+                <div class="bg-muted p-1 rounded-lg inline-flex border border-border">
+                    <button onclick="toggleMemoryMode('fast')" id="btn-fast"
+                        class="px-6 py-2 rounded-md text-sm font-medium transition-all shadow-sm bg-primary text-primary-foreground">Durante
+                        a Chamada (Fast Path)</button>
+                    <button onclick="toggleMemoryMode('slow')" id="btn-slow"
+                        class="px-6 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground transition-all">Pós-Chamada
+                        (Async Write)</button>
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-12 items-center">
+                <!-- Visual Representation -->
+                <div
+                    class="bg-card rounded-2xl p-8 border border-border h-80 flex flex-col justify-center relative overflow-hidden shadow-2xl">
+                    <div class="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none">
+                    </div>
+                    <div id="memory-visual-content" class="text-center transition-opacity duration-300 relative z-10">
+                        <!-- Dynamic Content Inserted via JS -->
+                    </div>
+                </div>
+
+                <!-- Text Explanation -->
+                <div>
+                    <h3 id="memory-title" class="text-2xl font-bold text-foreground mb-4 font-heading">Fast Path:
+                        Leitura Otimizada
+                    </h3>
+                    <div id="memory-desc" class="prose prose-invert text-muted-foreground">
+                        <p class="mb-4">Durante a conversa, o foco é 100% na latência e naturalidade da voz. O agente
+                            não "pensa" em guardar dados.</p>
+                        <ul class="space-y-3">
+                            <li class="flex items-start">
+                                <span class="mr-2 mt-1 text-primary">✓</span>
+                                <span><strong>Tool Única:</strong> <code
+                                        class="bg-muted px-1 py-0.5 rounded text-primary-foreground">recall_memories</code>.
+                                    Apenas leitura.</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="mr-2 mt-1 text-primary">✓</span>
+                                <span><strong>Non-blocking:</strong> A busca vetorial acontece em background se
+                                    necessário.</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="mr-2 mt-1 text-primary">✓</span>
+                                <span><strong>Contexto:</strong> Perfil e últimas 5 memórias carregadas no
+                                    início.</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Data & Schema Section -->
+    <section id="data" class="py-24 bg-background relative">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="text-3xl font-bold text-foreground mb-12 font-heading">Estrutura de Dados (PostgreSQL + Pgvector)
+            </h2>
+            <div class="grid md:grid-cols-3 gap-6">
+
+                <!-- Table: Users -->
+                <div
+                    class="bg-card p-6 rounded-xl border-t-4 border-primary shadow-lg shadow-black/20 hover:shadow-primary/10 transition-all duration-300 hover:-translate-y-1">
+                    <h3 class="text-xl font-bold text-foreground mb-2 font-mono">users</h3>
+                    <p class="text-xs text-muted-foreground uppercase tracking-wide mb-4">Contexto Estático</p>
+                    <ul class="space-y-2 text-sm text-muted-foreground font-mono">
+                        <li class="flex justify-between border-b border-border/50 pb-1">
+                            <span>id</span> <span class="text-primary">UUID (PK)</span>
+                        </li>
+                        <li class="flex justify-between border-b border-border/50 pb-1">
+                            <span>email</span> <span class="text-primary">TEXT</span>
+                        </li>
+                        <li
+                            class="flex justify-between border-b border-border/50 pb-1 bg-primary/10 px-1 -mx-1 rounded">
+                            <span>profile</span> <span class="text-primary">JSONB</span>
+                        </li>
+                    </ul>
+                    <p class="mt-4 text-xs text-muted-foreground">O campo <code class="text-primary">profile</code>
+                        guarda factos estruturados
+                        (netos, doenças) injetados no system prompt.</p>
+                </div>
+
+                <!-- Table: User Memories -->
+                <div
+                    class="bg-card p-6 rounded-xl border-t-4 border-secondary shadow-lg shadow-black/20 hover:shadow-secondary/10 transition-all duration-300 hover:-translate-y-1">
+                    <h3 class="text-xl font-bold text-foreground mb-2 font-mono">user_memories</h3>
+                    <p class="text-xs text-muted-foreground uppercase tracking-wide mb-4">Cérebro Vetorial (RAG)</p>
+                    <ul class="space-y-2 text-sm text-muted-foreground font-mono">
+                        <li class="flex justify-between border-b border-border/50 pb-1">
+                            <span>content</span> <span class="text-secondary">TEXT</span>
+                        </li>
+                        <li
+                            class="flex justify-between border-b border-border/50 pb-1 bg-secondary/10 px-1 -mx-1 rounded">
+                            <span>embedding</span> <span class="text-secondary">vector(768)</span>
+                        </li>
+                        <li class="flex justify-between border-b border-border/50 pb-1">
+                            <span>created_at</span> <span class="text-secondary">TIMESTAMP</span>
+                        </li>
+                    </ul>
+                    <p class="mt-4 text-xs text-muted-foreground">Usado para busca semântica (pgvector cosine
+                        similarity).
+                        Factos atómicos e episódicos.</p>
+                </div>
+
+                <!-- Table: Summaries -->
+                <div
+                    class="bg-card p-6 rounded-xl border-t-4 border-destructive shadow-lg shadow-black/20 hover:shadow-destructive/10 transition-all duration-300 hover:-translate-y-1">
+                    <h3 class="text-xl font-bold text-foreground mb-2 font-mono">session_summaries</h3>
+                    <p class="text-xs text-muted-foreground uppercase tracking-wide mb-4">Logs & Analytics</p>
+                    <ul class="space-y-2 text-sm text-muted-foreground font-mono">
+                        <li class="flex justify-between border-b border-border/50 pb-1">
+                            <span>summary</span> <span class="text-destructive">TEXT</span>
+                        </li>
+                        <li class="flex justify-between border-b border-border/50 pb-1">
+                            <span>emotional_state</span> <span class="text-destructive">TEXT</span>
+                        </li>
+                        <li class="flex justify-between border-b border-border/50 pb-1 px-1 -mx-1 rounded">
+                            <span>new_facts</span> <span class="text-destructive">JSONB</span>
+                        </li>
+                    </ul>
+                    <p class="mt-4 text-xs text-muted-foreground">Trigger para N8N. Base para relatórios semanais
+                        enviados à
+                        família.</p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Developer Gotchas -->
+    <section id="gotchas" class="py-24 bg-card/20 border-t border-border/50">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="text-3xl font-bold text-foreground mb-12 text-center font-heading">Notas para Desenvolvedores
+                (Gotchas)</h2>
+
+            <div class="space-y-4">
+                <details
+                    class="group bg-card p-6 rounded-xl border border-border open:bg-muted/30 open:shadow-lg transition-all duration-300">
+                    <summary
+                        class="flex justify-between items-center font-medium cursor-pointer list-none text-foreground text-lg">
+                        <span class="flex items-center"><span class="mr-3 text-2xl">⚠️</span> VAD (Voice Activity
+                            Detection) Sensível</span>
+                        <span class="transition group-open:rotate-180 text-muted-foreground">
+                            <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor"
+                                stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24"
+                                width="24">
+                                <path d="M6 9l6 6 6-6"></path>
+                            </svg>
+                        </span>
+                    </summary>
+                    <p class="text-muted-foreground mt-4 text-sm leading-relaxed pl-10">
+                        O VAD está calibrado para esperar <strong class="text-foreground">1 segundo de silêncio</strong>
+                        antes de considerar que
+                        o idoso terminou a frase. Ruídos de fundo constantes (como TV) podem impedir o modelo de
+                        responder. Testar em ambiente silencioso primeiro.
+                    </p>
+                </details>
+
+                <details
+                    class="group bg-card p-6 rounded-xl border border-border open:bg-muted/30 open:shadow-lg transition-all duration-300">
+                    <summary
+                        class="flex justify-between items-center font-medium cursor-pointer list-none text-foreground text-lg">
+                        <span class="flex items-center"><span class="mr-3 text-2xl">👷</span> Logging Assíncrono</span>
+                        <span class="transition group-open:rotate-180 text-muted-foreground">
+                            <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor"
+                                stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24"
+                                width="24">
+                                <path d="M6 9l6 6 6-6"></path>
+                            </svg>
+                        </span>
+                    </summary>
+                    <p class="text-muted-foreground mt-4 text-sm leading-relaxed pl-10">
+                        Evita usar <code class="bg-muted px-1 py-0.5 rounded text-primary-foreground">print()</code>
+                        padrão no backend Python. O LiveKit e o Asyncio podem engolir o output ou
+                        misturar threads. Usa a instância de <code
+                            class="bg-muted px-1 py-0.5 rounded text-primary-foreground">logger</code> fornecida pelo
+                        SDK do LiveKit para debug
+                        confiável.
+                    </p>
+                </details>
+
+                <details
+                    class="group bg-card p-6 rounded-xl border border-border open:bg-muted/30 open:shadow-lg transition-all duration-300">
+                    <summary
+                        class="flex justify-between items-center font-medium cursor-pointer list-none text-foreground text-lg">
+                        <span class="flex items-center"><span class="mr-3 text-2xl">🔌</span> Inicialização do
+                            Pgvector</span>
+                        <span class="transition group-open:rotate-180 text-muted-foreground">
+                            <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor"
+                                stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24"
+                                width="24">
+                                <path d="M6 9l6 6 6-6"></path>
+                            </svg>
+                        </span>
+                    </summary>
+                    <p class="text-muted-foreground mt-4 text-sm leading-relaxed pl-10">
+                        Ao levantar o container do PostgreSQL pela primeira vez, a extensão não está ativa por padrão. É
+                        obrigatório correr <code
+                            class="bg-muted px-1 py-0.5 rounded text-primary-foreground">CREATE EXTENSION vector;</code>
+                        na base de dados antes de criar a tabela
+                        `user_memories`, caso contrário o tipo `vector(768)` falha.
+                    </p>
+                </details>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-black/40 backdrop-blur-md text-muted-foreground py-12 border-t border-border">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <p class="mb-4 text-foreground font-heading font-semibold">Documentação Técnica EmpatIA v1.2</p>
+            <div class="flex justify-center space-x-6 text-sm">
+                <a href="#" class="hover:text-primary transition-colors">Repo Frontend</a>
+                <a href="#" class="hover:text-primary transition-colors">Repo Backend</a>
+                <a href="#" class="hover:text-primary transition-colors">Acesso DB</a>
+            </div>
+            <p class="mt-8 text-xs text-muted-foreground/60">© 2026 EmpatIA Project. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Data for Architecture Details
+        const architectureData = {
+            frontend: {
+                title: "Frontend (Next.js 14)",
+                content: `
+                    <ul class="space-y-3">
+                        <li><strong class="text-primary">Framework:</strong> Next.js 14 (App Router)</li>
+                        <li><strong class="text-primary">Hospedagem:</strong> Vercel</li>
+                        <li><strong class="text-primary">Auth:</strong> NextAuth.js (Segurança de sessão)</li>
+                        <li><strong class="text-primary">LiveKit Client:</strong> Gere a negociação WebRTC e dispositivos de áudio no browser.</li>
+                        <li class="mt-2 bg-muted p-2 rounded text-sm font-mono text-muted-foreground">/api/connection-details -> Obtém token</li>
+                    </ul>
+                `
+            },
+            livekit: {
+                title: "LiveKit Cloud (Germany)",
+                content: `
+                    <ul class="space-y-3">
+                        <li><strong class="text-primary">Região:</strong> Germany 2 (Baixa latência para PT)</li>
+                        <li><strong class="text-primary">Protocolo:</strong> WebRTC (UDP/TCP fallback)</li>
+                        <li><strong class="text-primary">Função:</strong> SFU (Selective Forwarding Unit). Recebe o áudio do browser e encaminha para o backend Python, e vice-versa.</li>
+                        <li><strong class="text-primary">VAD:</strong> Voice Activity Detection preliminar.</li>
+                    </ul>
+                `
+            },
+            backend: {
+                title: "Backend (Python Agent)",
+                content: `
+                    <ul class="space-y-3">
+                        <li><strong class="text-primary">Runtime:</strong> Python 3.12 (Docker na VPS)</li>
+                        <li><strong class="text-primary">Modelo:</strong> Gemini 2.5 Flash Native Audio.</li>
+                        <li><strong class="text-primary">Lógica:</strong> LiveKit Agents SDK v1.3.10.</li>
+                        <li><strong class="text-primary">Monkey Patches:</strong> Correções manuais aplicadas para evitar cortes de áudio durante tool calling.</li>
+                        <li class="mt-2 text-sm italic border-l-2 border-primary pl-2 text-muted-foreground">Ouve stream -> Gemini -> Fala stream.</li>
+                    </ul>
+                `
+            },
+            services: {
+                title: "Dados & Serviços AI",
+                content: `
+                    <ul class="space-y-3">
+                        <li><strong class="text-primary">PostgreSQL 15:</strong> Base relacional + Pgvector.</li>
+                        <li><strong class="text-primary">Vertex AI (Europe-West1):</strong> API endpoint para os modelos Gemini.</li>
+                        <li><strong class="text-primary">Embeddings:</strong> text-multilingual-embedding-002 (768 dims).</li>
+                        <li><strong class="text-primary">N8N:</strong> Automação de email e alertas baseados nos sumários da sessão.</li>
+                    </ul>
+                `
+            }
+        };
+
+        // Function to update Architecture Details Panel
+        function showDetails(key) {
+            // Update Visual Selection
+            document.querySelectorAll('.architecture-node').forEach(el => el.classList.remove('node-active'));
+            document.getElementById(`node-${key}`).classList.add('node-active');
+
+            // Update Content
+            const data = architectureData[key];
+            const titleEl = document.getElementById('detail-title');
+            const contentEl = document.getElementById('detail-content');
+
+            // Simple Fade Effect
+            contentEl.style.opacity = '0';
+            setTimeout(() => {
+                titleEl.textContent = data.title;
+                contentEl.innerHTML = data.content;
+                contentEl.style.opacity = '1';
+            }, 150);
+        }
+
+        // Select 'frontend' by default on load
+        window.addEventListener('DOMContentLoaded', () => {
+            showDetails('frontend');
+            toggleMemoryMode('fast'); // Init memory section
+            initCharts();
+        });
+
+        // Memory Mode Toggle Logic
+        function toggleMemoryMode(mode) {
+            const btnFast = document.getElementById('btn-fast');
+            const btnSlow = document.getElementById('btn-slow');
+            const visualContent = document.getElementById('memory-visual-content');
+            const title = document.getElementById('memory-title');
+            const desc = document.getElementById('memory-desc');
+
+            if (mode === 'fast') {
+                // Button Styles
+                btnFast.classList.add('bg-primary', 'text-primary-foreground', 'shadow-sm');
+                btnFast.classList.remove('text-muted-foreground', 'hover:text-foreground');
+
+                btnSlow.classList.remove('bg-primary', 'text-primary-foreground', 'shadow-sm');
+                btnSlow.classList.add('text-muted-foreground', 'hover:text-foreground');
+
+                // Content
+                visualContent.innerHTML = `
+                    <div class="flex justify-center items-center space-x-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div class="text-6xl filter drop-shadow-[0_0_10px_rgba(147,51,234,0.5)]">🗣️</div>
+                        <div class="h-1 bg-border w-16 relative overflow-hidden rounded">
+                             <div class="absolute top-0 left-0 h-full w-full bg-primary animate-[pulse_1s_infinite] shadow-[0_0_10px_#9333ea]"></div>
+                        </div>
+                        <div class="text-6xl filter drop-shadow-[0_0_10px_rgba(147,51,234,0.5)]">⚡</div>
+                        <div class="h-1 bg-border w-16"></div>
+                        <div class="text-6xl opacity-30 grayscale">💾</div>
+                    </div>
+                    <p class="mt-6 font-bold text-primary font-heading tracking-wide">Fluxo em Tempo Real</p>
+                    <p class="text-sm text-muted-foreground">User fala -> Audio Stream -> Gemini -> Resposta</p>
+                `;
+                title.textContent = "Fast Path: Conversação (Read-Only)";
+                desc.innerHTML = `
+                    <p class="mb-4">O sistema prioriza velocidade. Nenhuma escrita na base de dados ocorre.</p>
+                    <ul class="space-y-3">
+                        <li class="flex items-start"><span class="mr-2 text-primary font-bold">1.</span> <span>Carrega perfil + 5 memórias ao iniciar.</span></li>
+                        <li class="flex items-start"><span class="mr-2 text-primary font-bold">2.</span> <span>Usa <code class="bg-muted px-1 py-0.5 rounded text-primary-foreground">recall_memories</code> apenas se o utilizador perguntar algo específico do passado.</span></li>
+                        <li class="flex items-start"><span class="mr-2 text-primary font-bold">3.</span> <span>Stuttering (gaguez) eliminado por não haver bloqueio de I/O.</span></li>
+                    </ul>
+                `;
+            } else {
+                // Button Styles
+                btnSlow.classList.add('bg-primary', 'text-primary-foreground', 'shadow-sm');
+                btnSlow.classList.remove('text-muted-foreground', 'hover:text-foreground');
+
+                btnFast.classList.remove('bg-primary', 'text-primary-foreground', 'shadow-sm');
+                btnFast.classList.add('text-muted-foreground', 'hover:text-foreground');
+
+                // Content
+                visualContent.innerHTML = `
+                     <div class="flex justify-center items-center space-x-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div class="text-6xl opacity-30">🗣️</div>
+                        <div class="h-1 bg-border w-16"></div>
+                        <div class="text-6xl filter drop-shadow-[0_0_10px_rgba(216,180,254,0.5)]">🤖</div>
+                        <div class="h-1 bg-border w-16 relative overflow-hidden rounded">
+                             <div class="absolute top-0 left-0 h-full w-1/2 bg-secondary animate-[slide_2s_infinite] shadow-[0_0_10px_#d8b4fe]"></div>
+                        </div>
+                        <div class="text-6xl filter drop-shadow-[0_0_10px_rgba(216,180,254,0.5)]">💾</div>
+                    </div>
+                    <p class="mt-6 font-bold text-secondary font-heading tracking-wide">Processamento Async (Shutdown)</p>
+                    <p class="text-sm text-muted-foreground">Análise de Texto -> Extração -> Embeddings -> DB Insert</p>
+                `;
+                title.textContent = "Slow Path: Memorização (Pós-Chamada)";
+                desc.innerHTML = `
+                    <p class="mb-4">Ao desligar, um processo de ~60s inicia-se para consolidar o que foi dito.</p>
+                    <ul class="space-y-3">
+                        <li class="flex items-start"><span class="mr-2 text-secondary font-bold">1.</span> <span>Envia transcrição completa para Gemini 2.0 Flash (Texto).</span></li>
+                        <li class="flex items-start"><span class="mr-2 text-secondary font-bold">2.</span> <span>Extrai novos factos e estado emocional (JSON).</span></li>
+                        <li class="flex items-start"><span class="mr-2 text-secondary font-bold">3.</span> <span>Gera Embeddings em batch e guarda em PostgreSQL.</span></li>
+                    </ul>
+                `;
+            }
+        }
+
+        // Initialize Charts
+        function initCharts() {
+            Chart.defaults.color = 'hsl(215, 20.2%, 65.1%)';
+            Chart.defaults.borderColor = 'hsl(260, 30%, 20%)';
+
+            const ctx = document.getElementById('latencyChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Latência Total (~1.5s)'],
+                    datasets: [
+                        {
+                            label: 'Network (RTT)',
+                            data: [0.1],
+                            backgroundColor: '#4a5e90', // Brand Blue Deep
+                            barThickness: 40
+                        },
+                        {
+                            label: 'VAD (Silêncio)',
+                            data: [1.0],
+                            backgroundColor: '#d8b4fe', // Brand Lilac
+                            barThickness: 40
+                        },
+                        {
+                            label: 'Processamento AI',
+                            data: [0.4],
+                            backgroundColor: '#9333ea', // Brand Signature (Primary)
+                            barThickness: 40
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    maintainAspectRatio: false,
+                    responsive: true,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            title: { display: true, text: 'Segundos (s)', color: 'hsl(215, 20.2%, 65.1%)' },
+                            max: 2.0,
+                            grid: {
+                                color: 'hsl(260, 30%, 20%)'
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            display: false
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            backgroundColor: 'hsl(260 40% 8%)',
+                            titleColor: 'hsl(210 40% 98%)',
+                            bodyColor: 'hsl(210 40% 98%)',
+                            borderColor: 'hsl(260 30% 20%)',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function (context) {
+                                    return context.dataset.label + ': ' + context.raw + 's';
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 12,
+                                font: { size: 11, family: 'Inter' }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

@@ -39,17 +39,15 @@ export function ConnectionCountdown({ onComplete }: ConnectionCountdownProps) {
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
       {/* Número do countdown */}
-      <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full border-4 border-brand-lilac/30 bg-brand-lilac/10">
-        <span className="text-5xl font-bold text-white animate-pulse">{count}</span>
+      <div className="border-brand-lilac/30 bg-brand-lilac/10 mb-4 flex h-24 w-24 items-center justify-center rounded-full border-4">
+        <span className="animate-pulse text-5xl font-bold text-white">{count}</span>
       </div>
 
       {/* Mensagem */}
       <p className="text-center text-lg font-medium text-white/90">
         A EmpatIA vai falar em instantes...
       </p>
-      <p className="mt-2 text-center text-sm text-white/60">
-        Aguarde, por favor
-      </p>
+      <p className="mt-2 text-center text-sm text-white/60">Aguarde, por favor</p>
     </div>
   );
 }

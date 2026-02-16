@@ -36,6 +36,7 @@
 #### 1. **Reconexão Automática com UX Amigável**
 
 **Problema:**
+
 - Se WiFi falha, sessão perde-se e user tem que clicar "Conversar Agora" de novo
 - Backend já tem Session Resumption (v2.1), mas frontend não usa
 
@@ -43,7 +44,6 @@
 
 ```tsx
 // components/app/homepage-voice-agent.tsx - ADICIONAR
-
 import { RoomEvent } from 'livekit-client';
 
 function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
@@ -102,7 +102,7 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
   if (isReconnecting) {
     return (
       <div className="flex flex-col items-center gap-4 p-8">
-        <Loader2 className="h-12 w-12 animate-spin text-brand-lilac" />
+        <Loader2 className="text-brand-lilac h-12 w-12 animate-spin" />
         <div className="text-center">
           <p className="text-lg font-medium text-white">A reconectar...</p>
           <p className="text-sm text-white/60">Tentativa {reconnectAttempts}/3</p>
@@ -116,6 +116,7 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
 ```
 
 **Benefício:**
+
 - ✅ Idosos com WiFi instável não perdem a conversa
 - ✅ UX transparente - nem percebem que desconectou
 - ✅ Mensagens em PT-PT amigáveis
@@ -125,6 +126,7 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
 #### 2. **Indicador de "Quem Está a Falar"**
 
 **Problema:**
+
 - Não é claro se o agente está a ouvir ou a falar
 - Idosos interrompem o agente sem querer
 
@@ -141,11 +143,11 @@ export function SpeakingIndicator({
   isUserSpeaking: boolean;
 }) {
   return (
-    <div className="absolute top-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+    <div className="absolute top-20 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
       {/* Agent a falar */}
       {isAgentSpeaking && (
-        <div className="flex items-center gap-2 rounded-full border border-brand-lilac/50 bg-brand-lilac/10 px-4 py-2 backdrop-blur-md animate-pulse">
-          <div className="h-2 w-2 rounded-full bg-brand-lilac animate-ping" />
+        <div className="border-brand-lilac/50 bg-brand-lilac/10 flex animate-pulse items-center gap-2 rounded-full border px-4 py-2 backdrop-blur-md">
+          <div className="bg-brand-lilac h-2 w-2 animate-ping rounded-full" />
           <span className="text-sm font-medium text-white">EmpatIA está a falar...</span>
         </div>
       )}
@@ -171,14 +173,13 @@ const agentTracks = useTracks([Track.Source.Microphone], {
   onlySubscribed: true,
 }).filter((t) => t.participant instanceof RemoteParticipant);
 
-const isAgentSpeaking = agentTracks.some(
-  (track) => track.publication?.isSpeaking
-);
+const isAgentSpeaking = agentTracks.some((track) => track.publication?.isSpeaking);
 
 const { isSpeaking: isUserSpeaking } = useLocalParticipant();
 ```
 
 **Benefício:**
+
 - ✅ Idosos sabem quando podem falar
 - ✅ Reduz interrupções acidentais
 - ✅ Feedback visual claro
@@ -188,6 +189,7 @@ const { isSpeaking: isUserSpeaking } = useLocalParticipant();
 #### 3. **Botões Maiores e Mais Acessíveis**
 
 **Problema:**
+
 - Botões de 48px (12 tailwind) são pequenos para idosos
 - Difícil de clicar com tremor ou artrite
 
@@ -234,6 +236,7 @@ const { isSpeaking: isUserSpeaking } = useLocalParticipant();
 ```
 
 **Benefício:**
+
 - ✅ Mais fácil de clicar (área 78% maior)
 - ✅ Labels clarificam função
 - ✅ Melhor para motricidade reduzida
@@ -243,6 +246,7 @@ const { isSpeaking: isUserSpeaking } = useLocalParticipant();
 #### 4. **Mensagens de Erro Amigáveis**
 
 **Problema:**
+
 - Erros técnicos: "Failed to connect", "Media Device Failure"
 - Idosos não sabem o que fazer
 
@@ -293,6 +297,7 @@ catch (e) {
 ```
 
 **Benefício:**
+
 - ✅ Mensagens em linguagem simples
 - ✅ Sempre indica próximo passo
 - ✅ Reduz frustração
@@ -304,6 +309,7 @@ catch (e) {
 #### 5. **Indicador de Volume de Voz**
 
 **Problema:**
+
 - Idosos não sabem se estão a falar alto o suficiente
 - Alguns falam muito baixo, outros gritam
 
@@ -365,6 +371,7 @@ export function VolumeIndicator({ stream }: { stream?: MediaStream }) {
 ```
 
 **Benefício:**
+
 - ✅ Feedback em tempo real
 - ✅ Ajuda a ajustar volume
 - ✅ Melhora qualidade das conversas
@@ -374,6 +381,7 @@ export function VolumeIndicator({ stream }: { stream?: MediaStream }) {
 #### 6. **Tutorial de Primeira Utilização**
 
 **Problema:**
+
 - Idosos não sabem como usar pela primeira vez
 - Abandonam antes de tentar
 
@@ -393,17 +401,20 @@ export function OnboardingTutorial({ onComplete }: { onComplete: () => void }) {
     },
     {
       title: 'Clique em "Conversar Agora"',
-      description: 'Quando clicar, o seu navegador vai pedir permissão para usar o microfone. Clique em "Permitir".',
+      description:
+        'Quando clicar, o seu navegador vai pedir permissão para usar o microfone. Clique em "Permitir".',
       icon: '🎤',
     },
     {
       title: 'Fale Naturalmente',
-      description: 'Pode falar comigo como se estivesse a conversar com uma amiga. Não precisa de gritar!',
+      description:
+        'Pode falar comigo como se estivesse a conversar com uma amiga. Não precisa de gritar!',
       icon: '💬',
     },
     {
       title: 'Estou Sempre a Ouvir',
-      description: 'Quando vir os anéis a brilhar, estou a ouvi-lo. Pode fazer pausas, não há pressa.',
+      description:
+        'Quando vir os anéis a brilhar, estou a ouvi-lo. Pode fazer pausas, não há pressa.',
       icon: '👂',
     },
   ];
@@ -413,13 +424,9 @@ export function OnboardingTutorial({ onComplete }: { onComplete: () => void }) {
       <div className="max-w-md rounded-2xl border border-white/10 bg-gradient-to-b from-gray-900 to-black p-8 shadow-2xl">
         <div className="mb-6 text-center text-6xl">{steps[step - 1].icon}</div>
 
-        <h2 className="mb-3 text-center text-2xl font-bold text-white">
-          {steps[step - 1].title}
-        </h2>
+        <h2 className="mb-3 text-center text-2xl font-bold text-white">{steps[step - 1].title}</h2>
 
-        <p className="mb-6 text-center text-white/70">
-          {steps[step - 1].description}
-        </p>
+        <p className="mb-6 text-center text-white/70">{steps[step - 1].description}</p>
 
         {/* Progress dots */}
         <div className="mb-6 flex justify-center gap-2">
@@ -427,7 +434,7 @@ export function OnboardingTutorial({ onComplete }: { onComplete: () => void }) {
             <div
               key={i}
               className={`h-2 w-2 rounded-full transition-all ${
-                i + 1 === step ? 'w-6 bg-brand-lilac' : 'bg-white/20'
+                i + 1 === step ? 'bg-brand-lilac w-6' : 'bg-white/20'
               }`}
             />
           ))}
@@ -435,11 +442,7 @@ export function OnboardingTutorial({ onComplete }: { onComplete: () => void }) {
 
         <div className="flex gap-3">
           {step > 1 && (
-            <Button
-              variant="outline"
-              onClick={() => setStep(step - 1)}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={() => setStep(step - 1)} className="flex-1">
               Anterior
             </Button>
           )}
@@ -499,6 +502,7 @@ return (
 ```
 
 **Benefício:**
+
 - ✅ Reduz abandono
 - ✅ Educa utilizadores
 - ✅ Apenas aparece uma vez
@@ -508,6 +512,7 @@ return (
 #### 7. **Estado de "A Pensar..." quando Tool é Chamada**
 
 **Problema:**
+
 - Quando agent chama `recall_memories`, há pausa de 2-5s
 - User pensa que parou de funcionar
 
@@ -515,7 +520,6 @@ return (
 
 ```tsx
 // Adicionar listener para tool calls
-
 import { DataPacket_Kind } from 'livekit-client';
 
 function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
@@ -548,7 +552,7 @@ function AgentVisualizer({ onDisconnect }: { onDisconnect: () => void }) {
   return (
     <>
       {isThinking && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-purple-500/50 bg-purple-500/10 px-4 py-2 backdrop-blur-md">
+        <div className="absolute top-24 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-purple-500/50 bg-purple-500/10 px-4 py-2 backdrop-blur-md">
           <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
           <span className="text-sm text-white">A recordar...</span>
         </div>
@@ -583,6 +587,7 @@ async def recall_memories(topic: str) -> str:
 ```
 
 **Benefício:**
+
 - ✅ User sabe que agent está a processar
 - ✅ Evita confusão com pausas longas
 - ✅ Feedback visual consistente
@@ -608,18 +613,14 @@ export function ConversationHistory() {
   }, []);
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <h2 className="text-2xl font-bold mb-4">As Minhas Conversas</h2>
+    <div className="mx-auto max-w-2xl p-6">
+      <h2 className="mb-4 text-2xl font-bold">As Minhas Conversas</h2>
 
       {sessions.map((session) => (
         <div key={session.id} className="mb-4 rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-500">
-              {formatDate(session.created_at)}
-            </span>
-            <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-              {session.duration}min
-            </span>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm text-gray-500">{formatDate(session.created_at)}</span>
+            <span className="rounded bg-gray-100 px-2 py-1 text-xs">{session.duration}min</span>
           </div>
           <p className="text-gray-700">{session.summary}</p>
         </div>
@@ -634,18 +635,21 @@ export function ConversationHistory() {
 ## 📋 Checklist de Implementação
 
 ### Fase 1 (Esta semana):
+
 - [ ] Reconexão automática com UX amigável
 - [ ] Indicador "Quem está a falar"
 - [ ] Botões maiores (h-16 w-16)
 - [ ] Mensagens de erro amigáveis
 
 ### Fase 2 (Próximas 2 semanas):
+
 - [ ] Indicador de volume de voz
 - [ ] Tutorial de primeira utilização
 - [ ] Estado "A pensar..." para tool calls
 - [ ] Labels nos botões
 
 ### Fase 3 (Futuro):
+
 - [ ] Histórico de conversas
 - [ ] Dashboard para familiares
 - [ ] Modo escuro/claro (contraste para baixa visão)
@@ -656,21 +660,25 @@ export function ConversationHistory() {
 ## 🎨 Guia de Estilo para Idosos
 
 ### Fontes:
+
 - **Mínimo:** 16px para texto, 20px para botões
 - **Recomendado:** 18-24px para texto principal
 - **Família:** Sans-serif (melhor legibilidade)
 
 ### Cores:
+
 - **Contraste mínimo:** 4.5:1 (WCAG AA)
 - **Evitar:** Vermelho/verde juntos (daltonismo)
 - **Preferir:** Azul, roxo, amarelo (alta visibilidade)
 
 ### Interação:
+
 - **Botões:** Mínimo 44x44px (iOS HIG), recomendado 64x64px para idosos
 - **Espaçamento:** Mínimo 8px entre elementos clicáveis
 - **Feedback:** Sempre visual + auditivo quando possível
 
 ### Mensagens:
+
 - **Linguagem:** Simples, direta, positiva
 - **Evitar:** Jargão técnico ("timeout", "network error")
 - **Preferir:** "Vamos tentar de novo?", "Algo correu mal"
@@ -699,6 +707,5 @@ export function ConversationHistory() {
 ---
 
 **Fim do Documento**
-
 
 ## Trigger Deploy Mon Feb 16 12:57:06 WET 2026

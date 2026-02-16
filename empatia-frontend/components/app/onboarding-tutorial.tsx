@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from '@/components/livekit/button';
 import { X } from 'lucide-react';
+import { Button } from '@/components/livekit/button';
 
 interface OnboardingTutorialProps {
   onComplete: () => void;
@@ -61,7 +61,7 @@ export function OnboardingTutorial({ onComplete }: OnboardingTutorialProps) {
         {/* Botão de fechar (X) */}
         <button
           onClick={handleSkip}
-          className="absolute right-4 top-4 opacity-50 transition-opacity hover:opacity-100"
+          className="absolute top-4 right-4 opacity-50 transition-opacity hover:opacity-100"
           aria-label="Fechar tutorial"
         >
           <X className="h-5 w-5 text-white" />
@@ -82,7 +82,7 @@ export function OnboardingTutorial({ onComplete }: OnboardingTutorialProps) {
             <div
               key={i}
               className={`h-2 rounded-full transition-all ${
-                i + 1 === step ? 'w-6 bg-brand-lilac' : 'w-2 bg-white/20'
+                i + 1 === step ? 'bg-brand-lilac w-6' : 'w-2 bg-white/20'
               }`}
             />
           ))}
@@ -100,7 +100,10 @@ export function OnboardingTutorial({ onComplete }: OnboardingTutorialProps) {
             </Button>
           )}
 
-          <Button onClick={handleNext} className="flex-1 bg-white text-brand-signature hover:bg-white/90">
+          <Button
+            onClick={handleNext}
+            className="text-brand-signature flex-1 bg-white hover:bg-white/90"
+          >
             {step === steps.length ? 'Começar!' : 'Próximo'}
           </Button>
         </div>

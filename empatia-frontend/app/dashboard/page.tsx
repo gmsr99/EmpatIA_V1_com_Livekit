@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { Calendar, Clock, Heart, MessageCircle, Users } from 'lucide-react';
 import { Pool } from 'pg';
 import { auth } from '@/auth';
 import { Button } from '@/components/livekit/button';
-import { Calendar, Clock, Heart, MessageCircle, Users } from 'lucide-react';
 
 const pool = new Pool({
   host: process.env.POSTGRES_HOST,
@@ -33,7 +33,8 @@ function formatDate(date: Date): string {
 }
 
 // Helper para renderizar memórias de forma amigável
-function renderMemories(profile: any) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderMemories(profile: Record<string, any>) {
   if (!profile) return [];
 
   const sections = [];
@@ -57,9 +58,7 @@ function renderMemories(profile: any) {
   }
 
   // Outros campos (health, hobbies, etc.)
-  const otherFields = Object.keys(profile).filter(
-    (key) => !['family', 'state'].includes(key)
-  );
+  const otherFields = Object.keys(profile).filter((key) => !['family', 'state'].includes(key));
 
   for (const field of otherFields) {
     if (Array.isArray(profile[field]) && profile[field].length > 0) {
@@ -83,8 +82,12 @@ export default async function DashboardPage() {
 
   const client = await pool.connect();
   let userProfile = null;
-  let conversationStats = { total: 0, lastConversation: null };
-  let recentConversations: any[] = [];
+  const conversationStats = { total: 0, lastConversation: null };
+  let recentConversations: Array<{
+    created_at: Date;
+    session_summary: string;
+    emotional_state: string;
+  }> = [];
 
   try {
     // Buscar perfil do utilizador
@@ -137,12 +140,8 @@ export default async function DashboardPage() {
         {/* Header Section */}
         <div className="flex flex-col justify-between gap-4 border-b border-white/10 pb-6 md:flex-row md:items-center">
           <div>
-            <h1 className="font-heading text-4xl font-bold text-white">
-              Olá, {firstName}! 👋
-            </h1>
-            <p className="mt-2 text-lg text-white/60">
-              Bem-vindo à sua área pessoal
-            </p>
+            <h1 className="font-heading text-4xl font-bold text-white">Olá, {firstName}! 👋</h1>
+            <p className="mt-2 text-lg text-white/60">Bem-vindo à sua área pessoal</p>
           </div>
           <Link href="/#voice-agent">
             <Button className="bg-brand-signature hover:bg-brand-signature/90 h-12 rounded-full px-8 text-base font-semibold text-white shadow-lg transition-all hover:scale-105">
@@ -154,7 +153,7 @@ export default async function DashboardPage() {
         {/* Stats Cards - Usando apenas cores da marca */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* Total de Conversas */}
-          <div className="rounded-2xl border border-brand-lilac/20 bg-gradient-to-br from-brand-signature/10 to-brand-signature/5 p-6 backdrop-blur-md">
+          <div className="border-brand-lilac/20 from-brand-signature/10 to-brand-signature/5 rounded-2xl border bg-gradient-to-br p-6 backdrop-blur-md">
             <div className="flex items-center gap-4">
               <div className="bg-brand-signature/20 rounded-full p-3">
                 <MessageCircle className="text-brand-lilac h-6 w-6" />
@@ -194,9 +193,9 @@ export default async function DashboardPage() {
                 <p className="text-base font-semibold text-white">
                   {userProfile?.created_at
                     ? new Date(userProfile.created_at).toLocaleDateString('pt-PT', {
-                      month: 'long',
-                      year: 'numeric',
-                    })
+                        month: 'long',
+                        year: 'numeric',
+                      })
                     : 'Recentemente'}
                 </p>
               </div>
@@ -265,9 +264,7 @@ export default async function DashboardPage() {
 
             {/* Account Info */}
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-md">
-              <h2 className="font-heading mb-4 text-xl font-semibold text-white">
-                Dados da Conta
-              </h2>
+              <h2 className="font-heading mb-4 text-xl font-semibold text-white">Dados da Conta</h2>
               <div className="space-y-4">
                 <div>
                   <span className="block text-sm font-medium tracking-wider text-white/50 uppercase">
@@ -300,7 +297,7 @@ export default async function DashboardPage() {
                   {recentConversations.map((conv, idx) => (
                     <div
                       key={idx}
-                      className="rounded-lg border border-white/5 bg-black/20 p-4 transition-all hover:border-brand-lilac/30 hover:bg-black/30"
+                      className="hover:border-brand-lilac/30 rounded-lg border border-white/5 bg-black/20 p-4 transition-all hover:bg-black/30"
                     >
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-xs text-white/50">
@@ -324,9 +321,7 @@ export default async function DashboardPage() {
                     <Clock className="text-brand-lilac h-10 w-10" />
                   </div>
                   <p className="text-sm text-white/60">Ainda sem conversas</p>
-                  <p className="mt-1 text-xs text-white/40">
-                    Fale com a EmpatIA para começar
-                  </p>
+                  <p className="mt-1 text-xs text-white/40">Fale com a EmpatIA para começar</p>
                 </div>
               )}
             </div>
