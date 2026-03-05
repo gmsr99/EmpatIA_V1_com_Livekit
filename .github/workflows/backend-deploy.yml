@@ -1,6 +1,7 @@
 name: Deploy Backend EmpatIA 🤖
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
