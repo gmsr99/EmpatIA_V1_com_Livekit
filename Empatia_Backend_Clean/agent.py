@@ -338,9 +338,7 @@ async def entrypoint(ctx: JobContext):
         # --- CONTEXT WINDOW COMPRESSION (comprimir contexto para sessões longas) ---
         # Comprime automaticamente o context window para caber no limite do modelo.
         # Útil para conversas de 10+ minutos com muitas pausas/silêncios.
-        context_window_compression=ContextWindowCompressionConfig(
-            enabled=True  # Compressão automática quando necessário
-        ),
+        context_window_compression=ContextWindowCompressionConfig(),
 
         # --- SYSTEM INSTRUCTION ---
         instructions="""
