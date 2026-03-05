@@ -83,52 +83,10 @@ def _patched_handle_tool_calls(self, tool_call: genai_types.LiveServerToolCall) 
     # Agora deixamos a geração continuar até que o servidor envie turn_complete.
 
 realtime_api.RealtimeSession._handle_tool_calls = _patched_handle_tool_calls
-
-# --- PATCH 3: Interceptar SessionResumptionUpdate messages ---
-# O LiveKit SDK não expõe SessionResumptionUpdate messages por padrão.
-# Fazemos patch do _handle_response para interceptar e guardar handles.
-
-_original_handle_response = realtime_api.RealtimeSession._handle_response
-
-async def _patched_handle_response(self, resp: genai_types.LiveServerMessage):
-    """
-    Intercepta respostas do servidor para capturar SessionResumptionUpdate.
-    Chama o handler original depois de processar.
-    """
-    # Verificar se é um SessionResumptionUpdate
-    if hasattr(resp, 'session_resumption_update') and resp.session_resumption_update:
-        update = resp.session_resumption_update
-
-        # Obter user_identity do contexto global
-        # (definido no entrypoint antes de iniciar a sessão)
-        global _current_user_identity
-        user_identity = _current_user_identity
-
-        if user_identity and hasattr(update, 'new_handle') and update.new_handle:
-            # Guardar handle diretamente no cache global
-            # (o dict _session_handles será definido abaixo, mas Python permite acesso)
-            import time
-            global _session_handles
-
-            resumable = getattr(update, 'resumable', False)
-            last_msg_idx = getattr(update, 'last_consumed_client_message_index', 0)
-
-            _session_handles[user_identity] = {
-                "handle": update.new_handle,
-                "resumable": resumable,
-                "timestamp": time.time(),
-                "last_message_index": last_msg_idx
-            }
-
-            # Logging (logger já está disponível neste ponto)
-            import logging
-            log = logging.getLogger("empatia-agent")
-            log.info(f"[SessionResumption] Handle guardado: user={user_identity[:8]}..., resumable={resumable}, msg_idx={last_msg_idx}")
-
-    # Chamar handler original
-    return await _original_handle_response(self, resp)
-
-realtime_api.RealtimeSession._handle_response = _patched_handle_response
+# -----------------------------------------------------------------
+# NOTA: Session Resumption é tratada nativamente pelo SDK v1.3.10
+# dentro de _recv_task (não é necessário monkey patch).
+# O SDK guarda automaticamente os handles em self._session_resumption_handle.
 # -----------------------------------------------------------------
 
 logging.basicConfig(level=logging.INFO)
