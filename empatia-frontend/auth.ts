@@ -2,7 +2,6 @@ import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { Pool } from 'pg';
-import PostgresAdapter from '@auth/pg-adapter';
 
 const pool = new Pool({
   host: process.env.POSTGRES_HOST || '72.60.89.5', // VPS IP
@@ -15,7 +14,6 @@ const pool = new Pool({
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PostgresAdapter(pool),
   providers: [
     Credentials({
       credentials: {

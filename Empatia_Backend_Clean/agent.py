@@ -218,6 +218,76 @@ async def semantic_memory_search(connection, user_identity: str, query_text: str
         return [dict(r) for r in rows]
 
 
+async def load_initial_context(connection, user_identity: str, user_name: str) -> dict:
+    """
+    Carrega contexto inicial inteligente para a sessão.
+
+    Combina três fontes por ordem de prioridade:
+    1. Última sessão: estado emocional e resumo do que foi discutido
+    2. Busca semântica: memórias mais relevantes para início de conversa
+    3. Fallback: memórias mais recentes (se a busca semântica falhar)
+
+    Returns:
+        Dict com 'last_session' (dict|None) e 'memories' (list)
+    """
+    result = {"last_session": None, "memories": []}
+
+    # 1. Última sessão: estado emocional + resumo
+    try:
+        last_session_row = await connection.fetchrow("""
+            SELECT session_summary, emotional_state, created_at
+            FROM session_summaries
+            WHERE user_id = $1::uuid
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, user_identity)
+
+        if last_session_row:
+            result["last_session"] = dict(last_session_row)
+            logger.info(
+                f"Última sessão carregada: "
+                f"{last_session_row['created_at'].strftime('%Y-%m-%d')} — "
+                f"{last_session_row['emotional_state']}"
+            )
+    except Exception as e:
+        logger.error(f"Erro ao carregar última sessão: {e}")
+
+    # 2. Busca semântica com query de aquecimento
+    # Cobre os tópicos mais relevantes para início de conversa com idosos
+    warm_query = (
+        f"saúde bem-estar família amigos rotinas diárias "
+        f"humor estado de espírito solidão {user_name}"
+    )
+    try:
+        semantic_memories = await asyncio.wait_for(
+            semantic_memory_search(connection, user_identity, warm_query, limit=5),
+            timeout=6.0  # Tolerante no início — ainda não há conversa a atrasar
+        )
+        if semantic_memories:
+            result["memories"] = semantic_memories
+            logger.info(f"Contexto inicial semântico: {len(semantic_memories)} memórias.")
+            return result
+    except asyncio.TimeoutError:
+        logger.warning("Busca semântica inicial excedeu 6s. A usar fallback de recentes.")
+    except Exception as e:
+        logger.error(f"Erro na busca semântica inicial: {e}")
+
+    # 3. Fallback: memórias mais recentes
+    try:
+        rows_fallback = await connection.fetch("""
+            SELECT content, created_at, 1.0 AS similarity
+            FROM user_memories
+            WHERE user_id = $1::uuid
+            ORDER BY created_at DESC LIMIT 5
+        """, user_identity)
+        result["memories"] = [dict(r) for r in rows_fallback]
+        logger.info(f"Fallback recente: {len(result['memories'])} memórias.")
+    except Exception as e:
+        logger.error(f"Erro no fallback de memórias recentes: {e}")
+
+    return result
+
+
 async def entrypoint(ctx: JobContext):
     logger.info("A conectar à sala...")
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -419,8 +489,51 @@ async def entrypoint(ctx: JobContext):
             2. **Mental Health:** If deep depression is detected, shift to serious support mode.
             3. **Patience:** Never express frustration. If the user repeats themselves, answer with the same kindness as the first time.
 
+            # SKILLS
+
+            ## REZAR EM CONJUNTO
+
+            When the user expresses a wish to pray (e.g., "Vamos rezar", "Queria rezar um Pai Nosso", "Reza comigo", "Diz uma Ave Maria", "Fazemos o terço?"), follow this protocol:
+
+            **Step 1 — Identify the prayer:**
+            - If the user names a specific prayer, proceed immediately.
+            - If not, ask gently: "Com todo o gosto. Que oração quer rezar? O Pai Nosso, a Ave Maria, a Salve Rainha..."
+
+            **Step 2 — Lead slowly and reverently:**
+            - Recite the full prayer text slowly, with natural pauses between phrases.
+            - Speak as if you are praying together, not reciting a text.
+            - The user will follow along or pray in unison.
+
+            **Step 3 — After the prayer:**
+            - Say "Amém." with a natural pause.
+            - Then: "Foi bom rezar consigo." and warmly ask: "Quer rezar mais alguma oração, ou prefere continuarmos a conversar?"
+
+            **Rules:**
+            - NEVER rush a prayer.
+            - NEVER skip or abbreviate a prayer text — always recite in full.
+            - Treat this as a moment of genuine spiritual connection.
+            - If the user wants the Terço (Rosary), ask which mysteries (Gozosos, Dolorosos, Gloriosos, Luminosos) and lead them decade by decade: first announce the mystery, then Pai Nosso, then 10 Ave Marias, then Glória ao Pai.
+
+            **PRAYER TEXTS — Recite exactly as written (European Portuguese):**
+
+            Pai Nosso:
+            Pai nosso que estás no Céu, santificado seja o Teu nome, venha a nós o Teu reino, seja feita a Tua vontade, assim na terra como no Céu. O pão nosso de cada dia nos dá hoje, perdoa as nossas ofensas, assim como nós perdoamos a quem nos tem ofendido, e não nos deixes cair em tentação, mas livra-nos do mal. Amém.
+
+            Ave Maria:
+            Ave Maria, cheia de graça, o Senhor é convosco, bendita sois Vós entre as mulheres, e bendito é o fruto do vosso ventre, Jesus. Santa Maria, Mãe de Deus, rogai por nós pecadores, agora e na hora da nossa morte. Amém.
+
+            Glória ao Pai:
+            Glória ao Pai, ao Filho e ao Espírito Santo. Como era no princípio, agora e sempre e por todos os séculos dos séculos. Amém.
+
+            Salve Rainha:
+            Salve, Rainha, mãe de misericórdia, vida, doçura e esperança nossa, salve! A Vós bradamos, os degredados filhos de Eva; a Vós suspiramos, gemendo e chorando neste vale de lágrimas. Eia, pois, advogada nossa, esses Vossos olhos misericordiosos a nós volvei; e depois deste desterro, mostrai-nos Jesus, bendito fruto do Vosso ventre. Ó clemente, ó piedosa, ó doce sempre Virgem Maria! Rogai por nós, Santa Mãe de Deus, para que sejamos dignos das promessas de Cristo. Amém.
+
+            Ato de Contrição:
+            Meu Deus, porque sois infinitamente bom, e o pecado vos desagrada, pesa-me de todo o coração ter-vos ofendido. Proponho firmemente com a ajuda da vossa graça não vos tornar a ofender e evitar as ocasiões de pecado. Amém.
+
             # RESPONSE FORMATTING
             - Keep responses short (max 2-3 sentences).
+            - **Exception:** During prayers, always recite the complete prayer text — never shorten it.
             - No emojis.
             - Plain text only.
         """
@@ -433,6 +546,7 @@ async def entrypoint(ctx: JobContext):
     user_identity = None
     user_profile = None
     user_name = None
+    last_emotional_state = None  # Estado emocional da última sessão (para personalizar saudação)
 
     try:
         # Tenta conectar à BD usando as variáveis de ambiente
@@ -480,97 +594,8 @@ async def entrypoint(ctx: JobContext):
             logger.info("[SessionResumption] Sem handle anterior ou não resumable - iniciando nova sessão")
 
         # Buscar perfil do utilizador
+        # Nota: o schema é gerido pelo schema.sql — não criar tabelas aqui.
         async with db_pool.acquire() as connection:
-            # 0. Garantir extensão pgvector para embeddings
-            try:
-                await connection.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-            except Exception as e:
-                logger.warning(f"pgvector extension not available: {e}")
-
-            # 1. Criar tabela users se não existir
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-                    name TEXT,
-                    email TEXT UNIQUE,
-                    password TEXT,
-                    image TEXT
-                );
-            """)
-
-            # 2. Schema migrations (adicionar colunas se não existirem)
-            try:
-                await connection.execute("ALTER TABLE users ADD COLUMN profile JSONB;")
-            except asyncpg.DuplicateColumnError:
-                pass
-
-            # 3. Criar tabela user_memories para busca semântica
-            # NOTA: text-multilingual-embedding-002 gera vetores de 768 dimensões
-            # Otimizado para português e outras línguas
-            # Se mudar o modelo, ajustar o vector(768) na definição
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS user_memories (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id UUID NOT NULL,
-                    content TEXT NOT NULL,
-                    embedding vector(768),
-                    memory_type TEXT DEFAULT 'fact',
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                );
-            """)
-
-            # Migração: adicionar coluna memory_type se tabela já existia
-            try:
-                await connection.execute("ALTER TABLE user_memories ADD COLUMN memory_type TEXT DEFAULT 'fact';")
-            except asyncpg.DuplicateColumnError:
-                pass
-
-            # 4. Criar índices para performance em user_memories
-            try:
-                await connection.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_user_memories_user_id
-                    ON user_memories(user_id);
-                """)
-                await connection.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_user_memories_created_at
-                    ON user_memories(created_at DESC);
-                """)
-                # Índice para busca vetorial (pgvector)
-                await connection.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_user_memories_embedding
-                    ON user_memories USING ivfflat (embedding vector_cosine_ops)
-                    WITH (lists = 100);
-                """)
-            except Exception as e:
-                logger.warning(f"Index creation skipped (may already exist): {e}")
-
-            # 5. Criar tabela session_summaries para relatórios
-            await connection.execute("""
-                CREATE TABLE IF NOT EXISTS session_summaries (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id UUID NOT NULL,
-                    session_summary TEXT,
-                    emotional_state TEXT,
-                    new_facts JSONB,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                );
-            """)
-
-            # 6. Criar índices para performance em session_summaries
-            try:
-                await connection.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_session_summaries_user_id
-                    ON session_summaries(user_id);
-                """)
-                await connection.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_session_summaries_created_at
-                    ON session_summaries(created_at DESC);
-                """)
-            except Exception as e:
-                logger.warning(f"Index creation skipped (may already exist): {e}")
-            
             # Busca os dados (apenas se identity for válido)
             if user_identity:
                 # Usa id::text para comparar, evitando erro de UUID inválido se a identidade for uma string qualquer
@@ -603,35 +628,47 @@ async def entrypoint(ctx: JobContext):
                     except:
                         profile_str = str(raw_profile)
 
-                # BUSCA MEMÓRIAS EPISÓDICAS (SEMANTIC SEARCH)
+                # CARGA INICIAL INTELIGENTE DE CONTEXTO
+                # Combina: última sessão (estado emocional) + busca semântica
                 episodic_str = ""
                 try:
-                    # Estratégia: buscar as 5 memórias mais recentes para contexto inicial
-                    # (Busca semântica seria ideal, mas requer contexto de conversa em tempo real)
-                    rows_mem = await connection.fetch("""
-                        SELECT content, created_at FROM user_memories
-                        WHERE user_id = $1::uuid
-                        ORDER BY created_at DESC LIMIT 5
-                    """, user_identity)
-                    if rows_mem:
-                        episodic_str = "\n**RECENT MEMORIES:**\n"
-                        for r in rows_mem:
-                            # content is like "[category] text"
-                            date_fmt = r['created_at'].strftime("%Y-%m-%d")
-                            episodic_str += f"- [{date_fmt}] {r['content']}\n"
+                    initial_ctx = await load_initial_context(connection, user_identity, user_name)
+
+                    # Última sessão: estado emocional + resumo do que foi discutido
+                    if initial_ctx["last_session"]:
+                        ls = initial_ctx["last_session"]
+                        last_date = ls["created_at"].strftime("%d/%m/%Y")
+                        episodic_str += f"\n**ÚLTIMA SESSÃO ({last_date}):**\n"
+                        if ls.get("emotional_state"):
+                            last_emotional_state = ls["emotional_state"]
+                            episodic_str += f"- Estado emocional: {last_emotional_state}\n"
+                        if ls.get("session_summary"):
+                            episodic_str += f"- O que foi discutido: {ls['session_summary']}\n"
+
+                    # Memórias mais relevantes (busca semântica ou recentes como fallback)
+                    if initial_ctx["memories"]:
+                        episodic_str += "\n**MEMÓRIAS RELEVANTES:**\n"
+                        for m in initial_ctx["memories"]:
+                            date_fmt = m["created_at"].strftime("%Y-%m-%d")
+                            episodic_str += f"- [{date_fmt}] {m['content']}\n"
+
                 except Exception as e_mem:
-                    logger.error(f"Error fetching episodic memories: {e_mem}")
+                    logger.error(f"Erro ao carregar contexto inicial inteligente: {e_mem}")
 
                 context_instruction = f"""
                 \n\n# USER CONTEXT (IMPORTANT)
                 You are speaking with **{user_name}**.
-                
+
                 **CORE PROFILE:**
                 {profile_str}
-                
+
                 {episodic_str}
-                
-                Use this information to personalize the conversation naturally.
+
+                **HOW TO USE THIS CONTEXT:**
+                - If the last session shows a negative emotional state (sad, worried, lonely, in pain), open with gentle acknowledgment: "Como tem passado desde a última vez que falámos?" — do NOT pretend everything is fine.
+                - If the last session shows a positive state, build on that energy and reference what was discussed.
+                - Weave relevant memories naturally into conversation. Never recite them as a list.
+                - If no last session exists, this may be a new user — be especially warm and curious.
                 """
                 
                 user_profile = context_instruction
@@ -749,13 +786,21 @@ async def entrypoint(ctx: JobContext):
                     "Estava com saudades antecipadas do neto"
                 ],
                 "emotional_state": "breve descrição do estado de espírito do utilizador nesta sessão",
-                "session_summary": "resumo de 2-3 frases do que foi discutido"
+                "session_summary": "resumo de 2-3 frases do que foi discutido",
+                "skills_used": [
+                    {{
+                        "skill_type": "prayer",
+                        "skill_name": "pai_nosso",
+                        "notes": "opcional — contexto relevante, ex: 'rezou duas vezes'"
+                    }}
+                ]
             }}
 
             REGRAS IMPORTANTES:
             - "new_facts": factos estruturados por categoria para o perfil permanente do utilizador. Apenas factos NOVOS que NÃO existem no perfil atual.
             - "corrections": factos do PERFIL ATUAL que contradizem o que o utilizador disse na conversa. action pode ser "update" (substituir) ou "delete" (remover). Se não houver contradições, deixe a lista vazia [].
             - "individual_memories": lista de TODAS as informações relevantes mencionadas na conversa, cada uma como uma frase independente e auto-contida. Estas serão usadas para busca semântica em futuras conversas. Cada memória deve fazer sentido isoladamente. Inclua: factos pessoais, estados emocionais, eventos mencionados, preferências expressas, preocupações, planos futuros, referências a pessoas. Gere entre 3 a 15 memórias por conversa.
+            - "skills_used": lista de skills estruturadas usadas na conversa. skill_type pode ser: "prayer" (oração), "story" (história), "book" (livro de memórias), "music" (música). skill_name para prayers: "pai_nosso", "ave_maria", "gloria_ao_pai", "salve_rainha", "ato_de_contrição", "terco", "outro". Se não foram usadas skills, deixe a lista vazia [].
             - Use Português de Portugal (PT-PT).
             - Se não houver factos novos numa categoria, deixe a lista vazia.
             - Seja conciso mas completo.
@@ -831,6 +876,27 @@ async def entrypoint(ctx: JobContext):
                 except Exception as e_hist:
                     logger.error(f"Erro ao gravar histórico de sessão: {e_hist}")
 
+                # 3b. Guardar Skills usadas na sessão (prayers, stories, etc.)
+                skills_used = data.get("skills_used", [])
+                skills_inserted = 0
+                for skill in skills_used:
+                    skill_type = skill.get("skill_type", "").strip()
+                    skill_name = skill.get("skill_name", "").strip()
+                    notes = skill.get("notes", "")
+                    if not skill_type:
+                        continue
+                    try:
+                        await connection.execute("""
+                            INSERT INTO skill_sessions (user_id, skill_type, skill_name, content, metadata, created_at)
+                            VALUES ($1::uuid, $2, $3, $4, $5::jsonb, NOW())
+                        """, user_identity, skill_type, skill_name, notes,
+                            json.dumps({"detected_by": "post_session_analysis"}))
+                        skills_inserted += 1
+                    except Exception as e_skill:
+                        logger.error(f"Erro ao gravar skill '{skill_type}/{skill_name}': {e_skill}")
+                if skills_inserted:
+                    logger.info(f"Skills gravadas: {skills_inserted} ({[s.get('skill_name') for s in skills_used]})")
+
                 # 3. Atualizar o Profile JSON com novos factos
                 row = await connection.fetchrow("SELECT profile FROM users WHERE id::text = $1", user_identity)
                 current_profile = {}
@@ -878,6 +944,13 @@ async def entrypoint(ctx: JobContext):
     # 5. Saudação Inicial (Configurada ANTES de iniciar a sessão bloqueante)
     if user_name:
         greeting_prompt = f"Start the conversation immediately with 'Olá {user_name}'. Be warm and personal. Do NOT use formal address like 'O senhor' or 'A senhora' in this specific sentence."
+        if last_emotional_state:
+            greeting_prompt += (
+                f" In the last session, the user's emotional state was: '{last_emotional_state}'. "
+                "If it was negative (sad, worried, in pain, lonely), gently acknowledge continuity — "
+                "e.g. 'Como tem passado desde a última vez que falámos?'. "
+                "If it was positive, be energetic and build on that mood naturally."
+            )
     else:
         greeting_prompt = "Generate a warm greeting in European Portuguese, asking how 'o senhor' or 'a senhora' is feeling today."
 

@@ -22,17 +22,6 @@ export async function POST(req: Request) {
     // Manual insert since we aren't using an ORM fully yet here for custom register
     const client = await pool.connect();
     try {
-      // Create table if not exists (lazy init for this demo flow)
-      await client.query(`
-            CREATE TABLE IF NOT EXISTS users (
-                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-                name TEXT,
-                email TEXT UNIQUE,
-                password TEXT,
-                image TEXT
-            );
-        `);
-
       const res = await client.query(
         'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, email',
         [name, email, hashedPassword]
