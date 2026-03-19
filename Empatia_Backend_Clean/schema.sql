@@ -89,3 +89,50 @@ CREATE INDEX IF NOT EXISTS idx_skill_sessions_user_id
 
 CREATE INDEX IF NOT EXISTS idx_skill_sessions_type
     ON skill_sessions(user_id, skill_type);
+
+-- -------------------------------------------------------------
+-- DASHBOARD DE CUIDADORES
+-- user_type: 'patient' (default) | 'caregiver'
+-- access_code: código de 6 chars que o cuidador usa para se ligar ao utente
+-- -------------------------------------------------------------
+ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type   TEXT DEFAULT 'patient';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS access_code TEXT UNIQUE;
+
+-- Requer pgcrypto para gen_random_bytes (já instalado na migração)
+-- UPDATE users SET access_code = upper(left(encode(gen_random_bytes(3),'hex'),6)) WHERE access_code IS NULL;
+
+CREATE TABLE IF NOT EXISTS caregiver_patients (
+    id           BIGSERIAL PRIMARY KEY,
+    caregiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    patient_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    assigned_at  TIMESTAMP DEFAULT NOW(),
+    UNIQUE(caregiver_id, patient_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_caregiver_patients_caregiver
+    ON caregiver_patients(caregiver_id);
+
+CREATE INDEX IF NOT EXISTS idx_caregiver_patients_patient
+    ON caregiver_patients(patient_id);
+
+-- -------------------------------------------------------------
+-- ALERTAS DE SAÚDE
+-- alert_type: 'keyword_high' | 'keyword_medium' | 'keyword_low'
+--           | 'no_contact'   | 'mood_decline'
+-- Keyword alerts: inseridos pelo agente pós-sessão
+-- Behavioral alerts: calculados em tempo real no dashboard
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS health_alerts (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    UUID    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    alert_type TEXT    NOT NULL,
+    content    TEXT,
+    is_read    BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_health_alerts_user
+    ON health_alerts(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_health_alerts_unread
+    ON health_alerts(user_id, is_read) WHERE NOT is_read;

@@ -793,6 +793,12 @@ async def entrypoint(ctx: JobContext):
                         "skill_name": "pai_nosso",
                         "notes": "opcional — contexto relevante, ex: 'rezou duas vezes'"
                     }}
+                ],
+                "health_alerts": [
+                    {{
+                        "severity": "high",
+                        "content": "O utilizador mencionou que caiu no corredor e não conseguiu levantar-se sozinho"
+                    }}
                 ]
             }}
 
@@ -801,6 +807,7 @@ async def entrypoint(ctx: JobContext):
             - "corrections": factos do PERFIL ATUAL que contradizem o que o utilizador disse na conversa. action pode ser "update" (substituir) ou "delete" (remover). Se não houver contradições, deixe a lista vazia [].
             - "individual_memories": lista de TODAS as informações relevantes mencionadas na conversa, cada uma como uma frase independente e auto-contida. Estas serão usadas para busca semântica em futuras conversas. Cada memória deve fazer sentido isoladamente. Inclua: factos pessoais, estados emocionais, eventos mencionados, preferências expressas, preocupações, planos futuros, referências a pessoas. Gere entre 3 a 15 memórias por conversa.
             - "skills_used": lista de skills estruturadas usadas na conversa. skill_type pode ser: "prayer" (oração), "story" (história), "book" (livro de memórias), "music" (música). skill_name para prayers: "pai_nosso", "ave_maria", "gloria_ao_pai", "salve_rainha", "ato_de_contrição", "terco", "outro". Se não foram usadas skills, deixe a lista vazia [].
+            - "health_alerts": alertas de saúde detetados na conversa. severity: "high" (queda/caiu, hospital, urgência, não consegue respirar/comer/andar de forma súbita), "medium" (dores fortes, não se sente bem, febre, mal-estar persistente), "low" (isolamento extremo — ninguém visita há muitos dias, tristeza profunda repetida). Se não houver alertas, lista vazia [].
             - Use Português de Portugal (PT-PT).
             - Se não houver factos novos numa categoria, deixe a lista vazia.
             - Seja conciso mas completo.
@@ -896,6 +903,26 @@ async def entrypoint(ctx: JobContext):
                         logger.error(f"Erro ao gravar skill '{skill_type}/{skill_name}': {e_skill}")
                 if skills_inserted:
                     logger.info(f"Skills gravadas: {skills_inserted} ({[s.get('skill_name') for s in skills_used]})")
+
+                # 3c. Guardar alertas de saúde detetados na sessão
+                health_alerts = data.get("health_alerts", [])
+                alerts_inserted = 0
+                for alert in health_alerts:
+                    severity = alert.get("severity", "").strip()
+                    content = alert.get("content", "").strip()
+                    if not severity or not content:
+                        continue
+                    alert_type = f"keyword_{severity}"
+                    try:
+                        await connection.execute("""
+                            INSERT INTO health_alerts (user_id, alert_type, content, is_read, created_at)
+                            VALUES ($1::uuid, $2, $3, FALSE, NOW())
+                        """, user_identity, alert_type, content)
+                        alerts_inserted += 1
+                    except Exception as e_alert:
+                        logger.error(f"Erro ao gravar alerta '{alert_type}': {e_alert}")
+                if alerts_inserted:
+                    logger.warning(f"⚠️  {alerts_inserted} alerta(s) de saúde gravado(s) para {user_identity}")
 
                 # 3. Atualizar o Profile JSON com novos factos
                 row = await connection.fetchrow("SELECT profile FROM users WHERE id::text = $1", user_identity)
