@@ -2,9 +2,9 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { HandHeart, Heart, Mail, MessageCircle, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { HandHeart, Heart, Mail, MessageCircle, Sparkles, User, Users } from 'lucide-react';
 import { motion } from 'motion/react';
-import { HomepageVoiceAgent } from '@/components/app/homepage-voice-agent';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
@@ -255,13 +255,55 @@ export function CallToActionSection({ className, id }: SectionProps) {
         viewport={{ once: true }}
         variants={fadeInUp}
       >
-        <h2 className="font-heading text-4xl text-white md:text-5xl">Pronto para conversar?</h2>
+        <h2 className="font-heading text-4xl text-white md:text-5xl">Pronto para começar?</h2>
         <p className="text-muted-foreground mx-auto max-w-2xl text-xl">
-          Descubra como a EmpatIA pode fazer a diferença hoje mesmo.
+          Escolha o seu perfil e comece hoje mesmo.
         </p>
 
-        <div className="mt-8 flex justify-center">
-          <HomepageVoiceAgent />
+        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-8">
+          {/* Card — Utilizador */}
+          <Link href="/agente">
+            <motion.div
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="group flex cursor-pointer flex-col items-center gap-5 rounded-3xl border border-white/10 bg-white/5 p-10 text-center backdrop-blur-md transition-all duration-300 hover:border-white/25 hover:bg-white/10"
+            >
+              <div className="bg-brand-signature/20 text-brand-lilac flex h-16 w-16 items-center justify-center rounded-2xl">
+                <User className="h-8 w-8" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-heading text-2xl font-bold text-white">Sou um Utilizador</h3>
+                <p className="text-muted-foreground text-base leading-relaxed">
+                  Quero falar com a EmpatIA e ter uma companhia sempre presente.
+                </p>
+              </div>
+              <span className="text-brand-lilac group-hover:text-brand-signature text-sm font-semibold transition-colors">
+                Entrar ou criar conta →
+              </span>
+            </motion.div>
+          </Link>
+
+          {/* Card — Cuidador */}
+          <Link href="/cuidador">
+            <motion.div
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="group flex cursor-pointer flex-col items-center gap-5 rounded-3xl border border-white/10 bg-white/5 p-10 text-center backdrop-blur-md transition-all duration-300 hover:border-white/25 hover:bg-white/10"
+            >
+              <div className="bg-brand-signature/20 text-brand-lilac flex h-16 w-16 items-center justify-center rounded-2xl">
+                <Users className="h-8 w-8" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-heading text-2xl font-bold text-white">Sou um Cuidador</h3>
+                <p className="text-muted-foreground text-base leading-relaxed">
+                  Quero acompanhar o bem-estar de um familiar ou utente.
+                </p>
+              </div>
+              <span className="text-brand-lilac group-hover:text-brand-signature text-sm font-semibold transition-colors">
+                Entrar ou criar conta →
+              </span>
+            </motion.div>
+          </Link>
         </div>
       </motion.div>
     </section>

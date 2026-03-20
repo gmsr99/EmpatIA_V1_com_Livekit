@@ -93,14 +93,76 @@ CREATE INDEX IF NOT EXISTS idx_skill_sessions_type
 -- -------------------------------------------------------------
 -- DASHBOARD DE CUIDADORES
 -- user_type: 'patient' (default) | 'caregiver'
--- access_code: código de 6 chars que o cuidador usa para se ligar ao utente
+-- username: login para idosos (sem email) — criado pelo cuidador
+-- caregiver_id: FK para o cuidador que criou este utente (NULL para cuidadores)
 -- -------------------------------------------------------------
-ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type   TEXT DEFAULT 'patient';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type    TEXT DEFAULT 'patient';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username     TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS caregiver_id UUID REFERENCES users(id) ON DELETE SET NULL;
+-- access_code is deprecated (replaced by caregiver_id direct FK)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS access_code TEXT UNIQUE;
 
--- Requer pgcrypto para gen_random_bytes (já instalado na migração)
--- UPDATE users SET access_code = upper(left(encode(gen_random_bytes(3),'hex'),6)) WHERE access_code IS NULL;
+-- -------------------------------------------------------------
+-- PERFIL DE UTILIZADOR (IDOSO)
+-- Preenchido pelo cuidador/familiar no dashboard.
+-- Passado ao agente no início de cada sessão.
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS patient_profiles (
+    id                  BIGSERIAL   PRIMARY KEY,
+    user_id             UUID        UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    full_name           TEXT,                   -- nome preferido / alcunha
+    gender              TEXT,                   -- 'masculino' | 'feminino'
+    age                 INTEGER,
+    location            TEXT,                   -- localidade ou região
+    profession_retired  TEXT,                   -- profissão antes da reforma
+    medications         TEXT[]      DEFAULT '{}',
+    interests           TEXT[]      DEFAULT '{}',
+    family              TEXT[]      DEFAULT '{}',
+    religious           TEXT,                   -- preferências religiosas/espirituais
+    notes               TEXT,                   -- notas livres do cuidador para o agente
+    updated_at          TIMESTAMP   DEFAULT NOW()
+);
 
+-- Migration: add gender column
+ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS gender TEXT;
+
+-- -------------------------------------------------------------
+-- PERFIL DE CUIDADOR
+-- Inclui campos de subscrição Stripe e limites de utentes.
+-- subscription_tier: 'trial' | 'basic' | 'extended' | 'professional'
+-- subscription_status: 'active' | 'inactive' | 'past_due' | 'canceled'
+-- patient_limit: 1 (trial/basic) | 2 (extended) | 5 (professional)
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS caregiver_profiles (
+    id                     BIGSERIAL   PRIMARY KEY,
+    user_id                UUID        UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role                   TEXT,       -- 'familiar' | 'profissional' | 'voluntário'
+    organization           TEXT,       -- instituição/empresa (se profissional)
+    phone                  TEXT,
+    notes                  TEXT,
+    stripe_customer_id     TEXT,
+    stripe_subscription_id TEXT,
+    subscription_tier      TEXT        DEFAULT 'trial',
+    subscription_status    TEXT        DEFAULT 'active',
+    trial_ends_at          TIMESTAMP,
+    patient_limit          INTEGER     DEFAULT 1,
+    updated_at             TIMESTAMP   DEFAULT NOW()
+);
+
+-- Migration: add Stripe columns to existing caregiver_profiles
+ALTER TABLE caregiver_profiles ADD COLUMN IF NOT EXISTS stripe_customer_id     TEXT;
+ALTER TABLE caregiver_profiles ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+ALTER TABLE caregiver_profiles ADD COLUMN IF NOT EXISTS subscription_tier      TEXT DEFAULT 'trial';
+ALTER TABLE caregiver_profiles ADD COLUMN IF NOT EXISTS subscription_status    TEXT DEFAULT 'active';
+ALTER TABLE caregiver_profiles ADD COLUMN IF NOT EXISTS trial_ends_at          TIMESTAMP;
+ALTER TABLE caregiver_profiles ADD COLUMN IF NOT EXISTS patient_limit          INTEGER DEFAULT 1;
+
+-- Migration: add username and caregiver_id to users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username     TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS caregiver_id UUID REFERENCES users(id) ON DELETE SET NULL;
+
+-- caregiver_patients is deprecated (replaced by users.caregiver_id FK)
+-- Kept for backward compat only — new code does NOT insert into this table
 CREATE TABLE IF NOT EXISTS caregiver_patients (
     id           BIGSERIAL PRIMARY KEY,
     caregiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

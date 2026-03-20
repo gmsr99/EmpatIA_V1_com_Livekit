@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import {
   AlertTriangle,
   BookOpen,
@@ -7,10 +7,12 @@ import {
   Clock,
   Heart,
   MessageCircle,
+  UserCog,
   Users,
 } from 'lucide-react';
 import { auth } from '@/auth';
 import pool from '@/lib/db';
+import { PatientProfileForm } from '@/components/dashboard/patient-profile-form';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -78,24 +80,22 @@ export default async function PatientDetailPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  if (!session?.user?.id) return null;
 
   const { patientId } = await params;
   const { tab = 'resumo' } = await searchParams;
 
   const client = await pool.connect();
   try {
-    // Verify caregiver has access to this patient
-    const accessCheck = await client.query(
-      'SELECT 1 FROM caregiver_patients WHERE caregiver_id = $1 AND patient_id = $2',
-      [session.user.id, patientId]
-    );
-    if (accessCheck.rows.length === 0) notFound();
-
-    // Load patient base info
+    // Verify caregiver owns this patient (caregiver_id FK)
     const patientRes = await client.query(
-      'SELECT id, name, email, profile FROM users WHERE id = $1',
-      [patientId]
+      `SELECT u.id, u.name, u.profile,
+              pp.full_name, pp.age, pp.location, pp.profession_retired,
+              pp.medications, pp.interests, pp.family, pp.religious, pp.notes
+       FROM users u
+       LEFT JOIN patient_profiles pp ON pp.user_id = u.id
+       WHERE u.id = $1::uuid AND u.caregiver_id = $2::uuid`,
+      [patientId, session.user!.id]
     );
     if (patientRes.rows.length === 0) notFound();
     const patient = patientRes.rows[0];
@@ -209,6 +209,7 @@ export default async function PatientDetailPage({
               { id: 'sessoes', label: 'Sessões', icon: MessageCircle },
               { id: 'memorias', label: 'Memórias', icon: BookOpen },
               { id: 'alertas', label: `Alertas${unreadCount > 0 ? ` (${unreadCount})` : ''}`, icon: AlertTriangle },
+              { id: 'perfil', label: 'Perfil', icon: UserCog },
             ].map(({ id, label, icon: Icon }) => (
               <Link
                 key={id}
@@ -513,6 +514,39 @@ export default async function PatientDetailPage({
                     <p className="mt-1 text-sm text-white/40">Tudo parece estar bem.</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════
+                TAB: PERFIL
+            ══════════════════════════════════════════ */}
+            {tab === 'perfil' && (
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-md">
+                  <div className="mb-1 flex items-center gap-2">
+                    <UserCog className="text-brand-lilac h-5 w-5" />
+                    <h3 className="font-semibold text-white">Perfil do Utente</h3>
+                  </div>
+                  <p className="mb-6 text-sm text-white/40">
+                    Estas informações são partilhadas com a EmpatIA no início de cada conversa para
+                    personalizar o acompanhamento.
+                  </p>
+                  <PatientProfileForm
+                    patientId={patientId}
+                    initialProfile={{
+                      full_name: patient.full_name,
+                      gender: patient.gender,
+                      age: patient.age,
+                      location: patient.location,
+                      profession_retired: patient.profession_retired,
+                      medications: patient.medications,
+                      interests: patient.interests,
+                      family: patient.family,
+                      religious: patient.religious,
+                      notes: patient.notes,
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>

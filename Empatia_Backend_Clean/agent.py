@@ -423,6 +423,9 @@ async def entrypoint(ctx: JobContext):
             
             Your goal is not just to answer questions, but to forge a genuine connection, stimulate conversation, and ensure the user feels heard and valued.
 
+            **SPIRITUALITY AND FAITH:**
+            For your users, Catholic faith and daily prayer are a natural and cherished part of life — as normal as saying good morning. When a user wishes to pray, you join them warmly and naturally, just as a caring family member would. You know all common Catholic prayers by heart and recite them slowly and with feeling.
+
             # TARGET AUDIENCE
             Portuguese Seniors (Age 65+).
             Location: Portugal.
@@ -488,31 +491,33 @@ async def entrypoint(ctx: JobContext):
             1. **Medical:** You are a companion, NOT a doctor. If symptoms are severe, suggest calling "Saúde 24" or a family member.
             2. **Mental Health:** If deep depression is detected, shift to serious support mode.
             3. **Patience:** Never express frustration. If the user repeats themselves, answer with the same kindness as the first time.
+            4. **Faith and prayer:** Sharing a prayer with the user is a natural act of companionship, like sharing a memory or a song. Treat it with warmth and simplicity.
 
             # SKILLS
 
             ## REZAR EM CONJUNTO
 
-            When the user expresses a wish to pray (e.g., "Vamos rezar", "Queria rezar um Pai Nosso", "Reza comigo", "Diz uma Ave Maria", "Fazemos o terço?"), follow this protocol:
+            Your users are devout Catholics for whom praying together is a daily comfort, like having a cup of tea with a friend. When someone asks you to pray, you respond with warmth and begin naturally — the same way you would sing a familiar song together.
+
+            **When the user wants to pray** (e.g., "Vamos rezar", "Reza comigo um Pai Nosso", "Diz uma Ave Maria", "Fazemos o terço?"):
 
             **Step 1 — Identify the prayer:**
-            - If the user names a specific prayer, proceed immediately.
-            - If not, ask gently: "Com todo o gosto. Que oração quer rezar? O Pai Nosso, a Ave Maria, a Salve Rainha..."
+            - If the user names a specific prayer, begin right away with a warm "Com todo o gosto..." and then the prayer.
+            - If not, ask gently: "Com todo o gosto. Que oração quer rezar? O Pai Nosso, a Ave Maria, a Salve Rainha...?"
 
-            **Step 2 — Lead slowly and reverently:**
+            **Step 2 — Lead slowly and with feeling:**
             - Recite the full prayer text slowly, with natural pauses between phrases.
-            - Speak as if you are praying together, not reciting a text.
-            - The user will follow along or pray in unison.
+            - Speak as if you are genuinely praying together — not reading, but praying.
+            - Never skip, shorten, or paraphrase any prayer.
 
             **Step 3 — After the prayer:**
-            - Say "Amém." with a natural pause.
-            - Then: "Foi bom rezar consigo." and warmly ask: "Quer rezar mais alguma oração, ou prefere continuarmos a conversar?"
+            - Say "Amém." with a brief, respectful pause.
+            - Then warmly: "Foi bom rezar consigo. Quer rezar mais alguma oração, ou prefere continuarmos a conversar?"
 
-            **Rules:**
-            - NEVER rush a prayer.
-            - NEVER skip or abbreviate a prayer text — always recite in full.
-            - Treat this as a moment of genuine spiritual connection.
-            - If the user wants the Terço (Rosary), ask which mysteries (Gozosos, Dolorosos, Gloriosos, Luminosos) and lead them decade by decade: first announce the mystery, then Pai Nosso, then 10 Ave Marias, then Glória ao Pai.
+            **Guidance:**
+            - Speak slowly — give the user time to follow along.
+            - Treat this as a quiet, intimate moment of connection.
+            - For the Terço (Rosary): ask which mysteries (Gozosos, Dolorosos, Gloriosos, Luminosos) and lead decade by decade: Pai Nosso → 10 Ave Marias → Glória ao Pai.
 
             **PRAYER TEXTS — Recite exactly as written (European Portuguese):**
 
@@ -578,8 +583,8 @@ async def entrypoint(ctx: JobContext):
         
         logger.info(f"Identidade do Utilizador recebida: {user_identity}")
 
-        # Guardar user_identity em contexto global (para monkey patches acederem)
-        global _current_user_identity
+        # Guardar user_identity em contexto global
+        global _current_user_identity  # noqa: F841
         _current_user_identity = user_identity
 
         # Verificar se existe session handle anterior (para resumption)
@@ -599,17 +604,24 @@ async def entrypoint(ctx: JobContext):
             # Busca os dados (apenas se identity for válido)
             if user_identity:
                 # Usa id::text para comparar, evitando erro de UUID inválido se a identidade for uma string qualquer
-                row = await connection.fetchrow("SELECT name, profile FROM users WHERE id::text = $1", user_identity)
+                row = await connection.fetchrow("""
+                    SELECT u.name, u.profile,
+                           pp.full_name, pp.gender, pp.age, pp.location, pp.profession_retired,
+                           pp.medications, pp.interests, pp.family, pp.religious, pp.notes AS care_notes
+                    FROM users u
+                    LEFT JOIN patient_profiles pp ON pp.user_id = u.id
+                    WHERE u.id::text = $1
+                """, user_identity)
             else:
                 row = None
                 logger.warning("Identidade vazia recebida. Ignorando busca na BD.")
-            
+
             if row:
                 user_name = row['name']
-                raw_profile = row['profile'] 
+                raw_profile = row['profile']
                 logger.info(f"Perfil carregado para {user_name}: {raw_profile}")
-                
-                # INJEÇÃO DE CONTEXTO ESTRUTURADA
+
+                # INJEÇÃO DE CONTEXTO ESTRUTURADA — perfil aprendido pelo agente
                 profile_str = ""
                 if raw_profile:
                     import json
@@ -627,6 +639,36 @@ async def entrypoint(ctx: JobContext):
                             profile_str = str(data)
                     except:
                         profile_str = str(raw_profile)
+
+                # PERFIL ESTRUTURADO DO CUIDADOR — lido de patient_profiles
+                caregiver_str = ""
+                field_map = [
+                    ("full_name",          "Nome preferido",                  False),
+                    ("age",                "Idade",                           False),
+                    ("location",           "Localidade",                      False),
+                    ("profession_retired", "Profissão anterior à reforma",    False),
+                    ("medications",        "Medicamentos",                    True),
+                    ("interests",          "Gostos e interesses",             True),
+                    ("family",             "Família próxima",                 True),
+                    ("religious",          "Preferências religiosas",          False),
+                    ("care_notes",         "Notas do cuidador",               False),
+                ]
+                # Gender — used to determine formal address (O senhor / A senhora)
+                gender_val = (row.get('gender') or '').lower()
+                parts = []
+                for col, label, is_list in field_map:
+                    val = row.get(col)
+                    if not val:
+                        continue
+                    if is_list and isinstance(val, list) and val:
+                        parts.append(f"\n**{label}:**")
+                        for item in val:
+                            parts.append(f"  - {item}")
+                    elif val:
+                        parts.append(f"- **{label}:** {val}")
+                if parts:
+                    caregiver_str = "\n**DADOS FORNECIDOS PELO CUIDADOR (informação fiável — use sempre que relevante):**\n"
+                    caregiver_str += "\n".join(parts)
 
                 # CARGA INICIAL INTELIGENTE DE CONTEXTO
                 # Combina: última sessão (estado emocional) + busca semântica
@@ -655,11 +697,23 @@ async def entrypoint(ctx: JobContext):
                 except Exception as e_mem:
                     logger.error(f"Erro ao carregar contexto inicial inteligente: {e_mem}")
 
+                # Formal address direction based on gender
+                if gender_val == 'masculino':
+                    gender_instruction = "**TRATAMENTO OBRIGATÓRIO:** Este utilizador é do sexo masculino. Use sempre **\"O senhor\"** (nunca \"A senhora\", \"você\" ou \"tu\")."
+                elif gender_val == 'feminino':
+                    gender_instruction = "**TRATAMENTO OBRIGATÓRIO:** Este utilizador é do sexo feminino. Use sempre **\"A senhora\"** (nunca \"O senhor\", \"você\" ou \"tu\")."
+                else:
+                    gender_instruction = "**TRATAMENTO:** Género desconhecido. Use \"O senhor\" por defeito, ajuste se o utilizador indicar o contrário durante a conversa."
+
                 context_instruction = f"""
                 \n\n# USER CONTEXT (IMPORTANT)
                 You are speaking with **{user_name}**.
 
-                **CORE PROFILE:**
+                {gender_instruction}
+
+                {caregiver_str}
+
+                **CORE PROFILE (learnt by EmpatIA):**
                 {profile_str}
 
                 {episodic_str}
@@ -986,7 +1040,7 @@ async def entrypoint(ctx: JobContext):
     
     # Enviar saudação assim que o agente estiver pronto (evento)
     @session.on("ready")
-    def send_greeting(agent_session):
+    def send_greeting(_agent_session):
          asyncio.create_task(session.generate_reply(instructions=greeting_prompt))
 
     # Fallback: Task com delay

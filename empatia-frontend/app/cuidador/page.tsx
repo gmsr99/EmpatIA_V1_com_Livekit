@@ -1,9 +1,10 @@
+import { AlertTriangle, Clock, Users } from 'lucide-react';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { AlertTriangle, ChevronRight, Clock, Users } from 'lucide-react';
 import { auth } from '@/auth';
-import { LinkPatientForm } from '@/components/dashboard/link-patient-form';
 import pool from '@/lib/db';
+import { SignOutButton } from '@/components/cuidador/sign-out-button';
+import { SubscriptionBanner } from '@/components/cuidador/subscription-banner';
+import { CreatePatientButton } from '@/components/cuidador/create-patient-button';
 
 function formatDaysAgo(date: Date | null): string {
   if (!date) return 'Nunca conversou';
@@ -26,9 +27,11 @@ function emotionClass(state: string): string {
 
 export default async function CuidadorPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  // Layout handles the unauthenticated UI, but the page still executes in Next.js 15 — guard here too
+  if (!session?.user?.id) return null;
 
   const client = await pool.connect();
+
   let patients: Array<{
     id: string;
     name: string;
@@ -38,8 +41,16 @@ export default async function CuidadorPage() {
     total_sessions: number;
   }> = [];
 
+  let subscription = {
+    tier: 'trial',
+    status: 'active',
+    trial_ends_at: null as Date | null,
+    patient_limit: 1,
+  };
+
   try {
-    const res = await client.query(
+    // Load patients (owned via caregiver_id FK)
+    const patientsRes = await client.query(
       `SELECT
          u.id,
          u.name,
@@ -48,16 +59,30 @@ export default async function CuidadorPage() {
           WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1)     AS last_emotional_state,
          COUNT(DISTINCT ha.id) FILTER (WHERE NOT ha.is_read)         AS unread_alerts,
          COUNT(DISTINCT ss.id)                                        AS total_sessions
-       FROM caregiver_patients cp
-       JOIN users u             ON u.id = cp.patient_id
+       FROM users u
        LEFT JOIN session_summaries ss ON ss.user_id = u.id
        LEFT JOIN health_alerts ha     ON ha.user_id = u.id
-       WHERE cp.caregiver_id = $1
+       WHERE u.caregiver_id = $1
        GROUP BY u.id, u.name
        ORDER BY last_session DESC NULLS LAST`,
-      [session.user.id]
+      [session.user!.id]
     );
-    patients = res.rows;
+    patients = patientsRes.rows;
+
+    // Load subscription info
+    const subRes = await client.query(
+      `SELECT subscription_tier, subscription_status, trial_ends_at, patient_limit
+       FROM caregiver_profiles WHERE user_id = $1`,
+      [session.user!.id]
+    );
+    if (subRes.rows[0]) {
+      subscription = {
+        tier: subRes.rows[0].subscription_tier ?? 'trial',
+        status: subRes.rows[0].subscription_status ?? 'active',
+        trial_ends_at: subRes.rows[0].trial_ends_at,
+        patient_limit: Number(subRes.rows[0].patient_limit ?? 1),
+      };
+    }
   } catch (e) {
     console.error('Cuidador page error:', e);
   } finally {
@@ -65,27 +90,32 @@ export default async function CuidadorPage() {
   }
 
   const totalAlerts = patients.reduce((sum, p) => sum + Number(p.unread_alerts), 0);
+  const canAddPatient = patients.length < subscription.patient_limit;
 
   return (
     <div className="min-h-screen px-4 pb-16 pt-24 sm:px-6">
-      <div className="mx-auto max-w-3xl space-y-8">
+      <div className="mx-auto max-w-3xl space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-heading text-3xl font-bold text-white">Painel de Cuidadores</h1>
             <p className="mt-1 text-white/50">
               {patients.length === 0
-                ? 'Adicione o primeiro utente abaixo'
+                ? 'Crie o primeiro utente abaixo'
                 : `${patients.length} utente${patients.length !== 1 ? 's' : ''} acompanhado${patients.length !== 1 ? 's' : ''}`}
             </p>
           </div>
-          <Link
-            href="/dashboard"
-            className="rounded-xl border border-white/20 px-4 py-2 text-sm text-white/60 transition-colors hover:border-white/40 hover:text-white"
-          >
-            ← O meu perfil
-          </Link>
+          <SignOutButton />
         </div>
+
+        {/* Subscription banner */}
+        <SubscriptionBanner
+          tier={subscription.tier}
+          status={subscription.status}
+          trialEndsAt={subscription.trial_ends_at}
+          patientLimit={subscription.patient_limit}
+          patientCount={patients.length}
+        />
 
         {/* Summary cards */}
         {patients.length > 0 && (
@@ -97,7 +127,12 @@ export default async function CuidadorPage() {
                 </div>
                 <div>
                   <p className="text-sm text-white/50">Utentes</p>
-                  <p className="text-2xl font-bold text-white">{patients.length}</p>
+                  <p className="text-2xl font-bold text-white">
+                    {patients.length}
+                    <span className="ml-1 text-base font-normal text-white/30">
+                      / {subscription.patient_limit}
+                    </span>
+                  </p>
                 </div>
               </div>
             </div>
@@ -130,14 +165,11 @@ export default async function CuidadorPage() {
             {patients.map((p) => (
               <Link key={p.id} href={`/cuidador/${p.id}`}>
                 <div className="hover:border-brand-lilac/30 group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-md transition-all hover:bg-white/8 active:scale-[0.98]">
-                  {/* Avatar */}
                   <div className="bg-brand-signature/20 flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
                     <span className="text-brand-lilac text-lg font-bold">
                       {p.name.charAt(0).toUpperCase()}
                     </span>
                   </div>
-
-                  {/* Info */}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-white">{p.name}</span>
@@ -155,8 +187,6 @@ export default async function CuidadorPage() {
                       <span>{p.total_sessions} conversa{Number(p.total_sessions) !== 1 ? 's' : ''}</span>
                     </div>
                   </div>
-
-                  {/* Emotion + chevron */}
                   <div className="flex shrink-0 items-center gap-2">
                     {p.last_emotional_state && (
                       <span
@@ -165,7 +195,6 @@ export default async function CuidadorPage() {
                         {p.last_emotional_state}
                       </span>
                     )}
-                    <ChevronRight className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </div>
               </Link>
@@ -174,20 +203,7 @@ export default async function CuidadorPage() {
         )}
 
         {/* Add patient */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-md">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="bg-brand-signature/20 rounded-full p-2">
-              <Users className="text-brand-lilac h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-white">Adicionar Utente</h2>
-              <p className="text-sm text-white/50">
-                Introduza o código de 6 letras que o utente pode ver no seu perfil
-              </p>
-            </div>
-          </div>
-          <LinkPatientForm />
-        </div>
+        <CreatePatientButton canAdd={canAddPatient} patientLimit={subscription.patient_limit} />
       </div>
     </div>
   );

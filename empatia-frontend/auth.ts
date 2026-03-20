@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  host: process.env.POSTGRES_HOST || '72.60.89.5', // VPS IP
+  host: process.env.POSTGRES_HOST || '72.60.89.5',
   user: process.env.POSTGRES_USER || 'empatia_admin',
   password: process.env.POSTGRES_PASSWORD || 'bigmoneycoming',
   database: process.env.POSTGRES_DB || 'empatia_db',
@@ -17,40 +17,45 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       credentials: {
+        // Caregivers log in with email; patients log in with username
         email: { label: 'Email', type: 'email' },
+        username: { label: 'Username', type: 'text' },
         password: { label: 'Password', type: 'password' },
       },
       authorize: async (credentials) => {
         try {
-          if (!credentials?.email || !credentials?.password) {
-            console.log('Missing credentials');
-            return null;
-          }
+          if (!credentials?.password) return null;
 
-          const email = credentials.email as string;
           const password = credentials.password as string;
+          const email = credentials.email as string | undefined;
+          const username = credentials.username as string | undefined;
 
-          console.log('Attempting login via DB for:', email);
+          if (!email && !username) return null;
 
-          // Logic to fetch user from DB
           const client = await pool.connect();
           try {
-            const res = await client.query('SELECT * FROM users WHERE email = $1', [email]);
-            const user = res.rows[0];
-
-            if (!user) {
-              console.log('User not found in DB:', email);
-              return null;
+            let user;
+            if (username) {
+              // Patient login — by username
+              const res = await client.query(
+                'SELECT * FROM users WHERE username = $1',
+                [username]
+              );
+              user = res.rows[0];
+            } else {
+              // Caregiver login — by email
+              const res = await client.query(
+                'SELECT * FROM users WHERE email = $1',
+                [email]
+              );
+              user = res.rows[0];
             }
+
+            if (!user) return null;
 
             const passwordsMatch = await bcrypt.compare(password, user.password);
-            if (!passwordsMatch) {
-              console.log('Password mismatch for:', email);
-              return null;
-            }
+            if (!passwordsMatch) return null;
 
-            console.log('User authenticated successfully:', user.id);
-            // Explicitly return the user object with id as string
             return {
               id: String(user.id),
               email: user.email,
@@ -60,15 +65,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             client.release();
           }
         } catch (error) {
-          console.error('Critical Auth Error:', error);
+          console.error('Auth error:', error);
           return null;
         }
       },
     }),
   ],
   callbacks: {
-    async session({ session, user, token }) {
-      // With JWT strategy (default for Credentials), user ID is in token.sub
+    async session({ session, token }) {
       if (token?.sub) {
         session.user.id = token.sub;
       }
