@@ -90,7 +90,7 @@ export default async function PatientDetailPage({
     // Verify caregiver owns this patient (caregiver_id FK)
     const patientRes = await client.query(
       `SELECT u.id, u.name, u.profile,
-              pp.full_name, pp.age, pp.location, pp.profession_retired,
+              pp.full_name, pp.gender, pp.age, pp.location, pp.profession_retired,
               pp.medications, pp.interests, pp.family, pp.religious, pp.notes
        FROM users u
        LEFT JOIN patient_profiles pp ON pp.user_id = u.id
@@ -117,6 +117,15 @@ export default async function PatientDetailPage({
       [patientId]
     );
     const memories = memoriesRes.rows;
+
+    // Load monthly usage
+    const usageRes = await client.query(
+      `SELECT COALESCE(minutes_used, 0) AS minutes_used
+       FROM patient_usage
+       WHERE patient_id = $1 AND year_month = TO_CHAR(NOW(), 'YYYY-MM')`,
+      [patientId]
+    );
+    const monthlyMinutes = Number(usageRes.rows[0]?.minutes_used ?? 0);
 
     // Load keyword health alerts
     const alertsRes = await client.query(
@@ -247,6 +256,39 @@ export default async function PatientDetailPage({
                       <p className="mt-0.5 text-xs text-white/50">{label}</p>
                     </div>
                   ))}
+                </div>
+
+                {/* Monthly usage bar */}
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-medium text-white/60">Uso este mês</p>
+                    <p className={`text-sm font-semibold ${monthlyMinutes >= 1800 ? 'text-red-400' : monthlyMinutes >= 1260 ? 'text-amber-400' : 'text-white/70'}`}>
+                      {Math.floor(monthlyMinutes / 60)}h {monthlyMinutes % 60}m
+                      <span className="ml-1 font-normal text-white/30">/ 30h</span>
+                    </p>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        monthlyMinutes >= 1800
+                          ? 'bg-red-500'
+                          : monthlyMinutes >= 1260
+                            ? 'bg-amber-400'
+                            : 'bg-brand-signature/70'
+                      }`}
+                      style={{ width: `${Math.min((monthlyMinutes / 1800) * 100, 100)}%` }}
+                    />
+                  </div>
+                  {monthlyMinutes >= 1800 && (
+                    <p className="mt-2 text-xs text-red-400">
+                      Limite atingido — utente bloqueado até ao próximo mês.
+                    </p>
+                  )}
+                  {monthlyMinutes >= 1260 && monthlyMinutes < 1800 && (
+                    <p className="mt-2 text-xs text-amber-400">
+                      Mais de 70% do limite mensal utilizado.
+                    </p>
+                  )}
                 </div>
 
                 {/* Behavioral alerts */}

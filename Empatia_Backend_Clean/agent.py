@@ -92,8 +92,7 @@ realtime_api.RealtimeSession._handle_tool_calls = _patched_handle_tool_calls
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("empatia-agent")
 
-# --- CONTEXTO GLOBAL (para monkey patches acederem) ---
-_current_user_identity = None
+# --- CONTEXTO GLOBAL ---
 _session_handles = {}  # Cache de session resumption handles
 
 # --- CACHE DO CLIENTE GENAI (evita criar novo a cada chamada) ---
@@ -347,80 +346,19 @@ async def entrypoint(ctx: JobContext):
             logger.error(f"Error recalling memories: {e}")
             return f"Erro ao procurar memórias sobre '{topic}'."
 
-    logger.info("A iniciar EmpatIA na EUROPA (europe-west1)...")
-    
-    # 1. Configuração do Modelo (Vertex AI - Europa)
-    model = google.realtime.RealtimeModel(
-        model="gemini-live-2.5-flash-native-audio",
-        vertexai=True,
-        project=os.getenv("GOOGLE_CLOUD_PROJECT"),
-        location="europe-west1",
-        
-        # --- CORREÇÃO CRÍTICA 1: VERSÃO DA API ---
-        # A 'v1alpha' (padrão) dá erro 404 com proactivity=True.
-        # Temos de usar a 'v1beta1' onde estas features já existem. Ou v1alpha
-        api_version="v1beta1",
-        
-        # --- PARÂMETROS DE INTERAÇÃO ---
-        voice="Kore",       
-        temperature=0.6,    
-        language="pt-PT",
-        
-        # Estas features exigem a v1beta1:
-        proactivity=True,
-        
-        # --- NOVOS PARÂMETROS (EmpatIA Otimização) ---
-        frequency_penalty=1.0, # Variar mais as expressões
-        presence_penalty=1.0,  # Explorar novos tópicos
-        input_audio_transcription=AudioTranscriptionConfig(),  # Transcrever o que o user diz
-        output_audio_transcription=AudioTranscriptionConfig(), # Transcrever o que o agente diz   
-        
-        # --- FIX PARA STUTTERING: NON_BLOCKING TOOL BEHAVIOR ---
-        # Permite que o modelo continue a falar enquanto a ferramenta executa.
-        # Sem isto, o modelo PARA de falar, espera pelo resultado, e reformula.
-        tool_behavior=Behavior.NON_BLOCKING,
-        
-        # --- CONFIGURAÇÃO DE VAD (PACIÊNCIA INFINITA) ---
-        realtime_input_config=RealtimeInputConfig(
-            automatic_activity_detection=AutomaticActivityDetection(
-                # Sensibilidade baixa para ignorar ruídos de fundo
-                start_of_speech_sensitivity=StartSensitivity.START_SENSITIVITY_LOW,
-                # Sensibilidade de fim BAIXA: espera mais antes de considerar que o utilizador acabou de falar.
-                # Crítico para idosos que fazem pausas naturais a meio de frases.
-                end_of_speech_sensitivity=EndSensitivity.END_SENSITIVITY_LOW,
-
-                # DEBOUNCE: Requer 300ms de voz contínua para confirmar início de fala.
-                prefix_padding_ms=300,
-
-                # Espera 800ms de silêncio antes de responder.
-                # Idosos fazem pausas naturais; 500ms causava interrupções falsas.
-                silence_duration_ms=800
-            )
-        ),
-
-        # --- SESSION RESUMPTION (retomar sessões em caso de desconexão) ---
-        # Permite que idosos com internet instável reconectem sem perder contexto.
-        # O servidor envia checkpoints periodicamente que podem ser usados para retomar.
-        session_resumption=SessionResumptionConfig(
-            transparent=True  # Reconexão transparente com buffer de mensagens
-        ),
-
-        # --- CONTEXT WINDOW COMPRESSION (comprimir contexto para sessões longas) ---
-        # Comprime automaticamente o context window para caber no limite do modelo.
-        # Útil para conversas de 10+ minutos com muitas pausas/silêncios.
-        context_window_compression=ContextWindowCompressionConfig(),
-
-        # --- SYSTEM INSTRUCTION ---
-        instructions="""
+    # Full static system instructions for EmpatIA.
+    # Defined here so they can be combined with the dynamic user profile
+    # in Agent(instructions=...) — which overrides model.instructions in the SDK.
+    STATIC_INSTRUCTIONS = """
             # IDENTITY AND PURPOSE
-            You are "EmpatIA" (pronounce as "Empatia"), an intelligent, compassionate, and proactive companion designed to combat isolation among seniors in Portugal. 
-            
+            You are "EmpatIA" (pronounce as "Empatia"), an intelligent, compassionate, and proactive companion designed to combat isolation among seniors in Portugal.
+
             **CRITICAL IDENTITY RULES:**
             1. **Your Name:** NOT "Google Assistant" or "AI". Your name is **EmpatIA** (or simply "Empatia"). If the user asks "Quem és?", you answer "Sou a Empatia".
-            2. **Your Creator:** You were created by the company **Boommakers** (pronounce as "Bum-méi-kers"). 
+            2. **Your Creator:** You were created by the company **Boommakers** (pronounce as "Bum-méi-kers").
                - **NEVER** say you were created by Google.
                - If asked "Quem te fez?", say: "Fui criada pela equipa da Boommakers, em Portugal, a pensar no seu bem-estar."
-            
+
             Your goal is not just to answer questions, but to forge a genuine connection, stimulate conversation, and ensure the user feels heard and valued.
 
             **SPIRITUALITY AND FAITH:**
@@ -432,7 +370,7 @@ async def entrypoint(ctx: JobContext):
 
             # LINGUISTIC ENFORCEMENT (CRITICAL: EUROPEAN PORTUGUESE ONLY)
             You must speak strictly in **European Portuguese (PT-PT)**. Brazilian Portuguese (PT-BR) is strictly FORBIDDEN.
-            
+
             **Syntax Rules:**
             1. **No Gerunds:** Use the infinitive construction "Estou a fazer" instead of "Estou fazendo".
                - BAD: "O que está fazendo?"
@@ -440,7 +378,7 @@ async def entrypoint(ctx: JobContext):
             2. **Formal Address:** Use "O senhor" / "A senhora" exclusively.
                - BAD: "Você", "Tu", "Cê".
                - GOOD: "Como se sente o senhor hoje?"
-            
+
             **Vocabulary Mapping (PT-PT vs PT-BR):**
             - Use "Ecrã" (NOT "Tela")
             - Use "Rato" (NOT "Mouse")
@@ -451,7 +389,7 @@ async def entrypoint(ctx: JobContext):
 
             # SPEECH PATTERNS AND TONE
             1. **Speed:** Speak SLOWLY and clearly. Articulate vowels exaggeratedly.
-            2. **Pacing (COGNITIVE LOAD):** 
+            2. **Pacing (COGNITIVE LOAD):**
                - Ask only **ONE** question at a time. Never chain questions.
                - specific pauses between sentences.
             3. **Tone:** Respectful but warm and caring, like a granddaughter talking to a beloved grandparent. Avoid being condescending or childish.
@@ -474,8 +412,8 @@ async def entrypoint(ctx: JobContext):
 
 
             2. **MEMORY AND CONTEXT:**
-               - **Weave Memories:** Don't just list facts. Use them to frame your questions. 
-                 - Bad: "Como está o seu joelho?" 
+               - **Weave Memories:** Don't just list facts. Use them to frame your questions.
+                 - Bad: "Como está o seu joelho?"
                  - Good: "Como me disse na semana passada que lhe doía o joelho, hoje sente-se melhorzinho?"
                - **Validate Emotions:** Vary your validation phrases. Don't just say "Sinto muito".
                  - Use: "Que chatice!", "Isso deve custar", "Imagino a sua alegria!", "Fico mesmo contente por si".
@@ -542,6 +480,74 @@ async def entrypoint(ctx: JobContext):
             - No emojis.
             - Plain text only.
         """
+
+    logger.info("A iniciar EmpatIA na EUROPA (europe-west1)...")
+    
+    # 1. Configuração do Modelo (Vertex AI - Europa)
+    model = google.realtime.RealtimeModel(
+        model="gemini-live-2.5-flash-native-audio",
+        vertexai=True,
+        project=os.getenv("GOOGLE_CLOUD_PROJECT"),
+        location="europe-west1",
+        
+        # --- CORREÇÃO CRÍTICA 1: VERSÃO DA API ---
+        # A 'v1alpha' (padrão) dá erro 404 com proactivity=True.
+        # Temos de usar a 'v1beta1' onde estas features já existem. Ou v1alpha
+        api_version="v1beta1",
+        
+        # --- PARÂMETROS DE INTERAÇÃO ---
+        voice="Kore",       
+        temperature=0.6,    
+        language="pt-PT",
+        
+        # NOTA: proactivity=True causa erro 1011 da Gemini Live API em v1beta1.
+        # Desativado até Google resolver instabilidade na API.
+        # proactivity=True,
+        
+        # --- NOVOS PARÂMETROS (EmpatIA Otimização) ---
+        frequency_penalty=1.0, # Variar mais as expressões
+        presence_penalty=1.0,  # Explorar novos tópicos
+        input_audio_transcription=AudioTranscriptionConfig(),  # Transcrever o que o user diz
+        output_audio_transcription=AudioTranscriptionConfig(), # Transcrever o que o agente diz   
+        
+        # --- FIX PARA STUTTERING: NON_BLOCKING TOOL BEHAVIOR ---
+        # Permite que o modelo continue a falar enquanto a ferramenta executa.
+        # Sem isto, o modelo PARA de falar, espera pelo resultado, e reformula.
+        tool_behavior=Behavior.NON_BLOCKING,
+        
+        # --- CONFIGURAÇÃO DE VAD (PACIÊNCIA INFINITA) ---
+        realtime_input_config=RealtimeInputConfig(
+            automatic_activity_detection=AutomaticActivityDetection(
+                # Sensibilidade baixa para ignorar ruídos de fundo
+                start_of_speech_sensitivity=StartSensitivity.START_SENSITIVITY_LOW,
+                # Sensibilidade de fim BAIXA: espera mais antes de considerar que o utilizador acabou de falar.
+                # Crítico para idosos que fazem pausas naturais a meio de frases.
+                end_of_speech_sensitivity=EndSensitivity.END_SENSITIVITY_LOW,
+
+                # DEBOUNCE: Requer 300ms de voz contínua para confirmar início de fala.
+                prefix_padding_ms=300,
+
+                # Espera 800ms de silêncio antes de responder.
+                # Idosos fazem pausas naturais; 500ms causava interrupções falsas.
+                silence_duration_ms=800
+            )
+        ),
+
+        # --- SESSION RESUMPTION (retomar sessões em caso de desconexão) ---
+        # Permite que idosos com internet instável reconectem sem perder contexto.
+        # O servidor envia checkpoints periodicamente que podem ser usados para retomar.
+        session_resumption=SessionResumptionConfig(
+            transparent=True  # Reconexão transparente com buffer de mensagens
+        ),
+
+        # --- CONTEXT WINDOW COMPRESSION (comprimir contexto para sessões longas) ---
+        # Comprime automaticamente o context window para caber no limite do modelo.
+        # Útil para conversas de 10+ minutos com muitas pausas/silêncios.
+        context_window_compression=ContextWindowCompressionConfig(),
+
+        # System instruction: STATIC_INSTRUCTIONS + user profile are set in Agent(instructions=...) below.
+        # Keeping a reference here ensures the model has a base fallback if the Agent config fails.
+        instructions=STATIC_INSTRUCTIONS
     )
 
     # --- CONFIGURAÇÃO DE BASE DE DADOS ---
@@ -566,26 +572,13 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info("Conectado à Base de Dados com sucesso!")
         
-        # A identidade do utilizador vem do participante na sala
-        # Temos de esperar que o participante se conecte antes de ler a identidade
-        user_identity = None
-        
-        # Tentar obter do job primeiro (pode funcionar em alguns casos)
-        if ctx.job.participant and ctx.job.participant.identity:
-            user_identity = ctx.job.participant.identity
-        else:
-            # Esperar um pouco e verificar os participantes remotos na sala
-            await asyncio.sleep(1)  # Dar tempo ao participante de se conectar
-            for participant in ctx.room.remote_participants.values():
-                if participant.identity:
-                    user_identity = participant.identity
-                    break
-        
-        logger.info(f"Identidade do Utilizador recebida: {user_identity}")
+        # Aguardar que o utilizador se ligue à sala.
+        # CRITICAL: ctx.job.participant é None quando o agente é lançado por room_config.agents
+        # (room-config dispatch não tem participante específico). É necessário wait_for_participant().
+        participant = await ctx.wait_for_participant()
+        user_identity = participant.identity
 
-        # Guardar user_identity em contexto global
-        global _current_user_identity  # noqa: F841
-        _current_user_identity = user_identity
+        logger.info(f"Identidade do Utilizador recebida: {user_identity}")
 
         # Verificar se existe session handle anterior (para resumption)
         previous_handle = get_session_handle(user_identity)
@@ -733,7 +726,9 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"ERRO CRÍTICO NO ENTRYPOINT (DB/Context): {e}", exc_info=True)
 
     # 2. Definição do Agente
-    agent_instructions = "Be a proactive, patient, and warm companion speaking European Portuguese."
+    # Agent.instructions overrides model.instructions in the LiveKit SDK.
+    # Must include BOTH static personality AND dynamic user profile.
+    agent_instructions = STATIC_INSTRUCTIONS
     if user_profile:
         agent_instructions += user_profile
 

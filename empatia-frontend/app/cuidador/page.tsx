@@ -39,6 +39,7 @@ export default async function CuidadorPage() {
     last_emotional_state: string | null;
     unread_alerts: number;
     total_sessions: number;
+    monthly_minutes: number;
   }> = [];
 
   let subscription = {
@@ -58,7 +59,13 @@ export default async function CuidadorPage() {
          (SELECT emotional_state FROM session_summaries
           WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1)     AS last_emotional_state,
          COUNT(DISTINCT ha.id) FILTER (WHERE NOT ha.is_read)         AS unread_alerts,
-         COUNT(DISTINCT ss.id)                                        AS total_sessions
+         COUNT(DISTINCT ss.id)                                        AS total_sessions,
+         COALESCE(
+           (SELECT minutes_used FROM patient_usage
+            WHERE patient_id = u.id
+              AND year_month = TO_CHAR(NOW(), 'YYYY-MM')),
+           0
+         )                                                            AS monthly_minutes
        FROM users u
        LEFT JOIN session_summaries ss ON ss.user_id = u.id
        LEFT JOIN health_alerts ha     ON ha.user_id = u.id
@@ -186,6 +193,27 @@ export default async function CuidadorPage() {
                       </span>
                       <span>{p.total_sessions} conversa{Number(p.total_sessions) !== 1 ? 's' : ''}</span>
                     </div>
+                    {Number(p.monthly_minutes) > 0 && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className={`h-full rounded-full ${
+                              Number(p.monthly_minutes) >= 1800
+                                ? 'bg-red-500'
+                                : Number(p.monthly_minutes) >= 1260
+                                  ? 'bg-amber-400'
+                                  : 'bg-white/30'
+                            }`}
+                            style={{
+                              width: `${Math.min((Number(p.monthly_minutes) / 1800) * 100, 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="shrink-0 text-xs text-white/30">
+                          {Math.floor(Number(p.monthly_minutes) / 60)}h{Number(p.monthly_minutes) % 60 > 0 ? `${Number(p.monthly_minutes) % 60}m` : ''}/30h
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {p.last_emotional_state && (

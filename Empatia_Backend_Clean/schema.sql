@@ -198,3 +198,20 @@ CREATE INDEX IF NOT EXISTS idx_health_alerts_user
 
 CREATE INDEX IF NOT EXISTS idx_health_alerts_unread
     ON health_alerts(user_id, is_read) WHERE NOT is_read;
+
+-- -------------------------------------------------------------
+-- UTILIZAÇÃO MENSAL
+-- Regista os minutos de conversação por utilizador por mês.
+-- year_month: 'YYYY-MM' (ex: '2026-03')
+-- monthly_limit: 1800 minutos (30 horas) por defeito
+-- Incrementado pelo frontend no fim de cada sessão.
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS patient_usage (
+    patient_id   UUID    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    year_month   TEXT    NOT NULL,  -- 'YYYY-MM'
+    minutes_used INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (patient_id, year_month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_patient_usage_patient
+    ON patient_usage(patient_id);

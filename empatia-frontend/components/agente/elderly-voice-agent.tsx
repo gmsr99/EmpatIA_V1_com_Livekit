@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ConnectionState, RemoteParticipant, Track } from 'livekit-client';
 import { Loader2, Mic, MicOff, PhoneOff } from 'lucide-react';
 import {
@@ -15,9 +15,18 @@ import { GlowingRingVisualizer } from '@/components/app/glowing-ring-visualizer'
 interface Props {
   userName: string;
   userId: string;
+  initialBlockedReason?: string | null;
+  minutesUsed?: number;
 }
 
-export function ElderlyVoiceAgent({ userName, userId }: Props) {
+const MONTHLY_LIMIT = 1800;
+
+export function ElderlyVoiceAgent({
+  userName,
+  userId,
+  initialBlockedReason,
+  minutesUsed = 0,
+}: Props) {
   const [connectionDetails, setConnectionDetails] = useState<{
     serverUrl: string;
     roomName: string;
@@ -26,6 +35,11 @@ export function ElderlyVoiceAgent({ userName, userId }: Props) {
   } | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockedReason, setBlockedReason] = useState<string | null>(
+    initialBlockedReason ?? null
+  );
+
+  const connectedAtRef = useRef<number | null>(null);
 
   const connect = useCallback(async () => {
     setIsConnecting(true);
@@ -36,7 +50,17 @@ export function ElderlyVoiceAgent({ userName, userId }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identity: userId, name: userName }),
       });
-      if (!res.ok) throw new Error('Falha ao conectar');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (
+          ['TRIAL_EXPIRED', 'USAGE_LIMIT_REACHED', 'SUBSCRIPTION_INACTIVE'].includes(data.error)
+        ) {
+          setBlockedReason(data.error);
+          return;
+        }
+        throw new Error('Falha ao conectar');
+      }
+      connectedAtRef.current = Date.now();
       setConnectionDetails(await res.json());
     } catch {
       setError('Não foi possível conectar. Verifique a sua ligação à internet e tente novamente.');
@@ -45,7 +69,78 @@ export function ElderlyVoiceAgent({ userName, userId }: Props) {
     }
   }, [userId, userName]);
 
-  const disconnect = useCallback(() => setConnectionDetails(null), []);
+  const disconnect = useCallback(() => {
+    if (connectedAtRef.current) {
+      const minutes = Math.ceil((Date.now() - connectedAtRef.current) / 60_000);
+      if (minutes > 0) {
+        fetch('/api/usage/record', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minutes }),
+        }).catch(() => {});
+      }
+      connectedAtRef.current = null;
+    }
+    setConnectionDetails(null);
+  }, []);
+
+  // Blocked screens
+  if (blockedReason === 'TRIAL_EXPIRED') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-black px-8 text-center">
+        <div className="space-y-4">
+          <p className="text-6xl">⏰</p>
+          <p className="font-heading text-3xl font-bold text-white sm:text-4xl">
+            Período de Teste Terminado
+          </p>
+          <p className="text-xl text-white/60 sm:text-2xl">
+            Os 15 dias de prova terminaram.
+          </p>
+          <p className="text-lg text-white/40">
+            Fale com o seu cuidador para continuar a usar a EmpatIA.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (blockedReason === 'USAGE_LIMIT_REACHED') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-black px-8 text-center">
+        <div className="space-y-4">
+          <p className="text-6xl">🕐</p>
+          <p className="font-heading text-3xl font-bold text-white sm:text-4xl">
+            Limite Mensal Atingido
+          </p>
+          <p className="text-xl text-white/60 sm:text-2xl">
+            Já utilizou as 30 horas deste mês.
+          </p>
+          <p className="text-lg text-white/40">
+            O limite renova-se no início do próximo mês.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (blockedReason === 'SUBSCRIPTION_INACTIVE') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-black px-8 text-center">
+        <div className="space-y-4">
+          <p className="text-6xl">🔒</p>
+          <p className="font-heading text-3xl font-bold text-white sm:text-4xl">
+            Serviço Indisponível
+          </p>
+          <p className="text-xl text-white/60 sm:text-2xl">
+            A subscrição não está ativa.
+          </p>
+          <p className="text-lg text-white/40">
+            Peça ao seu cuidador para verificar o plano.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (connectionDetails) {
     return (
@@ -63,6 +158,11 @@ export function ElderlyVoiceAgent({ userName, userId }: Props) {
       </LiveKitRoom>
     );
   }
+
+  const usagePercent = Math.min((minutesUsed / MONTHLY_LIMIT) * 100, 100);
+  const hoursUsed = Math.floor(minutesUsed / 60);
+  const minsUsed = minutesUsed % 60;
+  const showUsage = minutesUsed > 0;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-10 bg-black px-6">
@@ -107,6 +207,25 @@ export function ElderlyVoiceAgent({ userName, userId }: Props) {
         </div>
       )}
 
+      {/* Monthly usage bar — only show if some usage recorded */}
+      {showUsage && (
+        <div className="w-full max-w-xs space-y-2">
+          <div className="flex justify-between text-sm text-white/30">
+            <span>
+              {hoursUsed > 0 ? `${hoursUsed}h ${minsUsed}m` : `${minsUsed}m`} usados este mês
+            </span>
+            <span>30h</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full transition-all ${
+                usagePercent >= 90 ? 'bg-red-500' : usagePercent >= 70 ? 'bg-amber-400' : 'bg-white/40'
+              }`}
+              style={{ width: `${usagePercent}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -143,7 +262,6 @@ function ElderlyCallView({
     }
   }, [localParticipant]);
 
-  // Status label with visual indicator
   let statusLabel: string;
   let statusClass: string;
   let statusDot: string;
